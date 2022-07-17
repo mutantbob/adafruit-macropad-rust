@@ -4,6 +4,10 @@
 #![no_std]
 #![no_main]
 
+use adafruit_macropad::hal::pio::PIOExt;
+use adafruit_macropad::hal::Timer;
+use adafruit_macropad::Pins;
+use adafruit_macropad::XOSC_CRYSTAL_FREQ;
 use bsp::entry;
 use defmt::*;
 use defmt_rtt as _;
@@ -22,19 +26,20 @@ use bsp::hal::{
     sio::Sio,
     watchdog::Watchdog,
 };
+//use embedded_hal::prelude::_embedded_hal_blocking_spi_Write;
+use ws2812_pio::Ws2812;
+use smart_leds_trait::SmartLedsWrite;
 
 #[entry]
 fn main() -> ! {
     info!("Program start");
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
-    let mut watchdog = Watchdog::new(pac.WATCHDOG);
-    let sio = Sio::new(pac.SIO);
 
-    // External high-speed crystal on the pico board is 12Mhz
-    let external_xtal_freq_hz = 12_000_000u32;
+    let mut watchdog = Watchdog::new(pac.WATCHDOG);
+
     let clocks = init_clocks_and_plls(
-        external_xtal_freq_hz,
+        XOSC_CRYSTAL_FREQ,
         pac.XOSC,
         pac.CLOCKS,
         pac.PLL_SYS,
@@ -47,22 +52,40 @@ fn main() -> ! {
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
-    let pins = bsp::Pins::new(
+    let (mut pio, sm0, _,_,_) = pac.PIO0.split(&mut pac.RESETS);
+
+    let sio = Sio::new(pac.SIO);
+    let pins = Pins::new(
         pac.IO_BANK0,
         pac.PADS_BANK0,
         sio.gpio_bank0,
         &mut pac.RESETS,
     );
 
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+
     let mut led_pin = pins.led.into_push_pull_output();
 
+    let neopixel = pins.neopixel;
+
+    let mut neopixels = Ws2812::new(
+        neopixel.into_mode(),
+        &mut pio,
+        sm0,
+        clocks.peripheral_clock.freq(),
+        timer.count_down(),
+    );
+
+    let mut bright = 255;
     loop {
-        info!("on!");
+        let rgb = [(bright, 0, 0), (0, bright, 0), (0, 0, bright)];
+        let cmy = [(0, bright, bright), (bright, 0, bright), (bright, bright, 0)];
         led_pin.set_high().unwrap();
-        delay.delay_ms(500);
-        info!("off!");
+        let _ = neopixels.write(cmy.iter().copied());
+        delay.delay_ms(1500);
         led_pin.set_low().unwrap();
-        delay.delay_ms(500);
+        let _ = neopixels.write(rgb.iter().copied());
+        delay.delay_ms(1500);
     }
 }
 
