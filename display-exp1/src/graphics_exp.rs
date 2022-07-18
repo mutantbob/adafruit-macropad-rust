@@ -61,20 +61,20 @@ pub fn try_to_draw<DI: DisplayInterface>(disp: &mut GraphicsMode<DI>) {
         .unwrap();
 
     Text::new("or die", Point::new(5, 10))
-        .into_styled(TextStyle::new(Font6x8, BinaryColor::Off))
+        .into_styled(TextStyle::new(Font6x8, BinaryColor::On))
         .draw(wrapper)
         .unwrap();
 
     Styled::new(
-        Line::new(Point::new(5, 5), Point::new(30, 10)),
+        Line::new(Point::new(5, 35), Point::new(30, 40)),
         PrimitiveStyle::with_stroke(BinaryColor::On, 2),
     )
     .draw(wrapper)
     .unwrap();
 
     Styled::new(
-        Line::new(Point::new(5, 10), Point::new(30, 20)),
-        PrimitiveStyle::with_stroke(BinaryColor::Off, 2),
+        Line::new(Point::new(5, 40), Point::new(30, 50)),
+        PrimitiveStyle::with_stroke(BinaryColor::On, 2),
     )
     .draw(wrapper)
     .unwrap();

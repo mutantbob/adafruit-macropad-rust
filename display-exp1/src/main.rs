@@ -129,8 +129,8 @@ fn main() -> ! {
     //
     //
 
-    let _ = disp.draw_iter((0..5).flat_map(move |y| {
-        (0..10).map(move |x| {
+    let _ = disp.draw_iter((0..10).flat_map(move |y| {
+        (70..90).map(move |x| {
             embedded_graphics_core::Pixel(
                 embedded_graphics_core::prelude::Point::new(x, y),
                 if 0 == 1 & (x + y) {
