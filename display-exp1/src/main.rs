@@ -9,7 +9,7 @@
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
-use adafruit_macropad::hal::gpio::{Input, Output, PullUp};
+use adafruit_macropad::hal::gpio::{FunctionSpi, Input, PullUp};
 use adafruit_macropad::hal::pio::PIOExt;
 use adafruit_macropad::hal::{Spi, Timer};
 use adafruit_macropad::Pins;
@@ -30,7 +30,7 @@ use embedded_time::fixed_point::FixedPoint;
 use embedded_time::rate::Extensions;
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
-use rp_pico::hal::gpio::Readable;
+use rp_pico::hal::gpio::PushPullOutput;
 use sh1106::mode::GraphicsMode;
 use sh1106::Builder;
 use smart_leds_trait::SmartLedsWrite;
@@ -86,29 +86,30 @@ fn main() -> ! {
 
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
-    let _ = pins
-        .mosi
-        .into_mode::<adafruit_macropad::hal::gpio::FunctionSpi>();
-    let _ = pins
-        .miso
-        .into_mode::<adafruit_macropad::hal::gpio::FunctionSpi>();
+    let _spi_sclk = pins.sclk.into_mode::<FunctionSpi>();
+    let _spi_sclk = pins.mosi.into_mode::<FunctionSpi>();
+    // let _ = pins.miso.into_mode::<PushPullOutput>();
 
     let spi1 = Spi::<_, _, 8>::new(pac.SPI1).init(
         &mut pac.RESETS,
-        125_000_000u32.Hz(),
-        1_000_000u32.Hz(),
+        clocks.peripheral_clock.freq(),
+        16_000_000u32.Hz(),
         &MODE_0,
     );
 
     //
 
+    let mut oled_reset = pins.oled_reset.into_mode::<PushPullOutput>();
+
     let mut disp: GraphicsMode<_> = Builder::new()
         .connect_spi(
             spi1,
-            pins.oled_dc.into_mode::<Output<Readable>>(),
-            pins.oled_cs.into_mode::<Output<Readable>>(),
+            pins.oled_dc.into_mode::<PushPullOutput>(),
+            pins.oled_cs.into_mode::<PushPullOutput>(),
         )
         .into();
+
+    disp.reset(&mut oled_reset, &mut delay).unwrap();
 
     disp.init().unwrap();
     disp.flush().unwrap();
