@@ -13,19 +13,27 @@ defmt = "0.3"
 defmt-rtt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-# We're using a Pico by default on this template
-rp-pico = "0.4"
 
 adafruit-macropad = "*"
 ws2812-pio = "0.3.0"
 smart-leds-trait = "*"
+embedded-graphics-core = "*"
+embedded-graphics = "*"
+sh1106="*"
 
+# We're using a Pico by default on this template
+rp-pico = "0.4"
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead
 # sparkfun-pro-micro-rp2040 = "0.3"
 
 # If you're not going to use a Board Support Package you'll need these:
 # rp2040-hal = { version="0.5", features=["rt"] }
 # rp2040-boot2 = "0.2"
+
+
+#[dependencies.sh1107]
+#git="https://github.com/aaron-hardin/sh1107.git"
+
 
 # cargo build/run
 [profile.dev]
