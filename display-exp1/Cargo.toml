@@ -21,6 +21,8 @@ embedded-graphics-core = "*"
 embedded-graphics = "*"
 sh1106="*"
 
+rotary-encoder-hal = "*"
+
 # We're using a Pico by default on this template
 rp-pico = "0.4"
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead
@@ -33,6 +35,10 @@ rp-pico = "0.4"
 
 #[dependencies.sh1107]
 #git="https://github.com/aaron-hardin/sh1107.git"
+
+[dependencies.either]
+version = "*"
+default-features = false
 
 
 # cargo build/run

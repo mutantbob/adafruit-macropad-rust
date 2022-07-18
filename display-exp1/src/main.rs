@@ -9,6 +9,7 @@
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
+use adafruit_macropad::hal::gpio::{Input, Output, PullUp};
 use adafruit_macropad::hal::pio::PIOExt;
 use adafruit_macropad::hal::{Spi, Timer};
 use adafruit_macropad::Pins;
@@ -28,8 +29,8 @@ use embedded_hal::spi::MODE_0;
 use embedded_time::fixed_point::FixedPoint;
 use embedded_time::rate::Extensions;
 use panic_probe as _;
+use rotary_encoder_hal::{Direction, Rotary};
 use rp_pico::hal::gpio::Readable;
-use sh1106::interface::{DisplayInterface, SpiInterface};
 use sh1106::mode::GraphicsMode;
 use sh1106::Builder;
 use smart_leds_trait::SmartLedsWrite;
@@ -75,8 +76,6 @@ fn main() -> ! {
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
-    // let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
-
     let sio = Sio::new(pac.SIO);
     let pins = Pins::new(
         pac.IO_BANK0,
@@ -103,74 +102,104 @@ fn main() -> ! {
 
     //
 
-    let mut disp: GraphicsMode<
-        SpiInterface<
-            Spi<_, _, 8_u8>,
-            adafruit_macropad::hal::gpio::Pin<_, adafruit_macropad::hal::gpio::Output<Readable>>,
-            adafruit_macropad::hal::gpio::Pin<_, adafruit_macropad::hal::gpio::Output<Readable>>,
-        >,
-    > = Builder::new()
-        .connect_spi(spi1, pins.oled_dc.into_mode(), pins.oled_cs.into_mode())
+    let mut disp: GraphicsMode<_> = Builder::new()
+        .connect_spi(
+            spi1,
+            pins.oled_dc.into_mode::<Output<Readable>>(),
+            pins.oled_cs.into_mode::<Output<Readable>>(),
+        )
         .into();
 
     disp.init().unwrap();
     disp.flush().unwrap();
     disp.clear();
 
-    check3(&mut disp);
-    // check2(&mut disp);
-
     let mut led_pin = pins.led.into_push_pull_output();
 
     let mut neopixels = macropad_neopixels!(pins, clocks, timer, pac);
 
     //
+
+    let mut rotary = Rotary::new(
+        pins.encoder_rota.into_mode::<Input<PullUp>>(),
+        pins.encoder_rotb.into_mode::<Input<PullUp>>(),
+    );
+
+    //
     //
 
-    let _ = disp.draw_iter(
-        (0..5)
-            .map(move |y| {
-                (0..10).map(move |x| {
-                    embedded_graphics_core::Pixel(
-                        embedded_graphics_core::prelude::Point::new(x, y),
-                        if 0 == 1 & (x + y) {
-                            embedded_graphics_core::pixelcolor::BinaryColor::On
-                        } else {
-                            embedded_graphics_core::pixelcolor::BinaryColor::Off
-                        },
-                    )
-                })
-            })
-            .flatten(),
-    );
+    let _ = disp.draw_iter((0..5).flat_map(move |y| {
+        (0..10).map(move |x| {
+            embedded_graphics_core::Pixel(
+                embedded_graphics_core::prelude::Point::new(x, y),
+                if 0 == 1 & (x + y) {
+                    embedded_graphics_core::pixelcolor::BinaryColor::On
+                } else {
+                    embedded_graphics_core::pixelcolor::BinaryColor::Off
+                },
+            )
+        })
+    }));
 
     let _ = disp.flush();
 
     let _ = graphics_exp::try_to_draw(&mut disp);
 
-    let mut bright = 255;
+    let mut bright = 200;
+
+    let mut ticks: u16 = 0;
     loop {
+        let black = [(0, 0, 0); 3];
         let rgb = [(bright, 0, 0), (0, bright, 0), (0, 0, bright)];
         let cmy = [
             (0, bright, bright),
             (bright, 0, bright),
             (bright, bright, 0),
         ];
-        led_pin.set_high().unwrap();
-        let _ = neopixels.write(cmy.iter().copied());
-        delay.delay_ms(1500);
-        led_pin.set_low().unwrap();
-        let _ = neopixels.write(rgb.iter().copied());
-        delay.delay_ms(1500);
+
+        // const DECODE: [i8; 4] = [0, 1, 3, 2];
+        // let phase = DECODE[rotary.state as usize];
+        let phase = bright as i8;
+
+        if ticks & 0x200 == 0 {
+            led_pin.set_high().unwrap();
+            let _ = neopixels.write(wacky_lights(&black, &cmy, phase));
+        } else {
+            led_pin.set_low().unwrap();
+            let _ = neopixels.write(wacky_lights(&black, &rgb, phase));
+        }
+
+        match rotary.update() {
+            Ok(Direction::CounterClockwise) => {
+                bright = (bright as u16 + 1).min(255) as u8;
+            }
+            Ok(Direction::Clockwise) => {
+                bright = (bright as i16 - 1).max(0) as u8;
+            }
+            Ok(Direction::None) => {}
+            Err(_) => {
+                // don't care
+            }
+        }
+
+        ticks = ticks.wrapping_add(1);
+
+        delay.delay_ms(1);
     }
 }
 
-/*pub fn check1<DI>(_x: &SpiInterface<DI, DC, CS>)
-{
-
-}*/
-
-// pub fn check2<D: embedded_graphics::DrawTarget>(_x: &mut D) {}
-pub fn check3<DI: DisplayInterface>(_x: &mut GraphicsMode<DI>) {}
-
-// End of file
+fn wacky_lights<'a>(
+    black: &'a [(u8, u8, u8); 3],
+    rgb: &'a [(u8, u8, u8); 3],
+    phase: i8,
+) -> impl Iterator<Item = (u8, u8, u8)> + 'a {
+    (0..4)
+        .flat_map(move |row| {
+            if (row as i16 - phase as i16) % 4 == 0 {
+                rgb.iter()
+            } else {
+                black.iter()
+            }
+        })
+        .copied()
+}
