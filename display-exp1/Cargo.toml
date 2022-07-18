@@ -22,6 +22,7 @@ embedded-graphics = "*"
 sh1106="*"
 
 rotary-encoder-hal = "*"
+ufmt="*"
 
 # We're using a Pico by default on this template
 rp-pico = "0.4"

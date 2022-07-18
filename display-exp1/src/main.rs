@@ -4,6 +4,7 @@
 #![no_std]
 #![no_main]
 
+use core::str::from_utf8_unchecked;
 // Provide an alias for our BSP so we can switch targets quickly.
 // Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
 use rp_pico as bsp;
@@ -16,12 +17,19 @@ use bsp::entry;
 use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
 use defmt_rtt as _;
+use embedded_graphics::fonts::{Font6x8, Text};
+use embedded_graphics::style::TextStyle;
 use embedded_graphics_core::draw_target::DrawTarget as DT_;
+use embedded_graphics_core::geometry::{Point, Size};
+use embedded_graphics_core::pixelcolor::BinaryColor;
+use embedded_graphics_core::primitives::Rectangle;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint;
+use graphics_exp::DTWrapper;
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
 use smart_leds_trait::SmartLedsWrite;
+use ufmt::{uWrite, uwrite};
 
 mod graphics_exp;
 #[macro_use]
@@ -81,6 +89,7 @@ fn main() -> ! {
     let _ = graphics_exp::try_to_draw(&mut disp);
 
     let mut bright = 200;
+    let mut old_brightness = ChangeDetector::new(0);
 
     let mut ticks: u16 = 0;
     loop {
@@ -117,9 +126,83 @@ fn main() -> ! {
             }
         }
 
+        if old_brightness.changed(bright) {
+            use embedded_graphics::drawable::Drawable;
+            let p1 = Point::new(20, 40);
+            let _ = disp.fill_solid(
+                &Rectangle::new(p1.clone(), Size::new(100, 60)),
+                BinaryColor::On,
+            );
+
+            let mut fmt_buffer = UfmtWrapper::<80>::new();
+
+            // fmt_buffer.write_str("bright");
+            uwrite!(&mut fmt_buffer, "brightness={}", bright);
+
+            let _ = Text::new(
+                fmt_buffer.as_str(),
+                // "brightness",
+                embedded_graphics::geometry::Point::new(p1.x + 1, p1.y + 1),
+            )
+            .into_styled(TextStyle::new(
+                Font6x8,
+                embedded_graphics::pixelcolor::BinaryColor::Off,
+            ))
+            .draw(&mut DTWrapper { inner: &mut disp });
+            let _ = disp.flush();
+        }
+
         ticks = ticks.wrapping_add(1);
 
         delay.delay_ms(1);
+    }
+}
+
+struct ChangeDetector<T> {
+    old: T,
+}
+
+impl<T: PartialEq> ChangeDetector<T> {
+    pub fn new(first: T) -> Self {
+        ChangeDetector { old: first }
+    }
+
+    pub fn changed(&mut self, new_val: T) -> bool {
+        if new_val == self.old {
+            false
+        } else {
+            self.old = new_val;
+            true
+        }
+    }
+}
+
+struct UfmtWrapper<const N: usize> {
+    cursor: usize,
+    buffer: [u8; N],
+}
+
+impl<const N: usize> UfmtWrapper<N> {
+    pub fn new() -> Self {
+        UfmtWrapper {
+            cursor: 0,
+            buffer: [0; N],
+        }
+    }
+
+    pub fn as_str<'a>(&'a self) -> &'a str {
+        unsafe { from_utf8_unchecked(&self.buffer[..self.cursor]) }
+    }
+}
+
+impl<const N: usize> uWrite for UfmtWrapper<N> {
+    type Error = ();
+
+    fn write_str(&mut self, s: &str) -> Result<(), Self::Error> {
+        let bytes = s.as_bytes();
+        self.buffer[self.cursor..(self.cursor + bytes.len())].copy_from_slice(bytes);
+        self.cursor += bytes.len();
+        Ok(())
     }
 }
 

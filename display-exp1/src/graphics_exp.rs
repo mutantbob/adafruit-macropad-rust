@@ -6,7 +6,7 @@ use embedded_graphics::style::{PrimitiveStyle, Styled, TextStyle};
 use sh1106::interface::DisplayInterface;
 use sh1106::mode::GraphicsMode;
 
-struct DTWrapper<
+pub struct DTWrapper<
     'a,
     E,
     D: embedded_graphics_core::draw_target::DrawTarget<
@@ -14,7 +14,7 @@ struct DTWrapper<
         Error = E,
     >,
 > {
-    inner: &'a mut D,
+    pub inner: &'a mut D,
 }
 
 impl<
