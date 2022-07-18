@@ -13,6 +13,7 @@ use rp_pico as bsp;
 use adafruit_macropad::hal::gpio::{Input, PullUp};
 use adafruit_macropad::hal::pio::PIOExt;
 use adafruit_macropad::hal::Timer;
+use adafruit_macropad_macros::{macropad_clocks, macropad_neopixels, macropad_oled, macropad_pins};
 use bsp::entry;
 use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
@@ -32,8 +33,6 @@ use smart_leds_trait::SmartLedsWrite;
 use ufmt::{uWrite, uwrite};
 
 mod graphics_exp;
-#[macro_use]
-mod macros;
 
 #[entry]
 fn main() -> ! {
@@ -137,7 +136,7 @@ fn main() -> ! {
             let mut fmt_buffer = UfmtWrapper::<80>::new();
 
             // fmt_buffer.write_str("bright");
-            uwrite!(&mut fmt_buffer, "brightness={}", bright);
+            uwrite!(&mut fmt_buffer, "brightness={}", bright).unwrap();
 
             let _ = Text::new(
                 fmt_buffer.as_str(),

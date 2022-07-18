@@ -24,6 +24,8 @@ sh1106="*"
 rotary-encoder-hal = "*"
 ufmt="*"
 
+adafruit-macropad-macros = { path="../adafruit-macropad-macros"}
+
 # We're using a Pico by default on this template
 rp-pico = "0.4"
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead

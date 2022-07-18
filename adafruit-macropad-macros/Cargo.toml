@@ -1,0 +1,15 @@
+[package]
+name = "adafruit-macropad-macros"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+embedded-hal = { version = "0.2.5", features = ["unproven"] }
+embedded-time = "0.12"
+
+adafruit-macropad = "*"
+ws2812-pio = "0.3.0"
+sh1106 = "*"
