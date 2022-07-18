@@ -9,50 +9,23 @@
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
-use adafruit_macropad::hal::gpio::{FunctionSpi, Input, PullUp};
+use adafruit_macropad::hal::gpio::{Input, PullUp};
 use adafruit_macropad::hal::pio::PIOExt;
-use adafruit_macropad::hal::{Spi, Timer};
-use adafruit_macropad::Pins;
-use adafruit_macropad::XOSC_CRYSTAL_FREQ;
+use adafruit_macropad::hal::Timer;
 use bsp::entry;
-use bsp::hal::{
-    clocks::{init_clocks_and_plls, Clock},
-    pac,
-    sio::Sio,
-    watchdog::Watchdog,
-};
+use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
 use defmt_rtt as _;
 use embedded_graphics_core::draw_target::DrawTarget as DT_;
 use embedded_hal::digital::v2::OutputPin;
-use embedded_hal::spi::MODE_0;
 use embedded_time::fixed_point::FixedPoint;
-use embedded_time::rate::Extensions;
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
-use rp_pico::hal::gpio::PushPullOutput;
-use sh1106::mode::GraphicsMode;
-use sh1106::Builder;
 use smart_leds_trait::SmartLedsWrite;
-use ws2812_pio::Ws2812;
 
 mod graphics_exp;
-
-macro_rules! macropad_neopixels {
-    ($pins:expr, $pio:expr, $sm0: expr, $clocks:expr, $timer:expr) => {
-        Ws2812::new(
-            $pins.neopixel.into_mode(),
-            &mut $pio,
-            $sm0,
-            $clocks.peripheral_clock.freq(),
-            $timer.count_down(),
-        )
-    };
-    ($pins: expr, $clocks:expr, $timer:expr, $pac:expr) => {{
-        let (mut pio, sm0, _, _, _) = $pac.PIO0.split(&mut $pac.RESETS);
-        macropad_neopixels!($pins, pio, sm0, $clocks, $timer)
-    }};
-}
+#[macro_use]
+mod macros;
 
 #[entry]
 fn main() -> ! {
@@ -62,58 +35,17 @@ fn main() -> ! {
 
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
 
-    let clocks = init_clocks_and_plls(
-        XOSC_CRYSTAL_FREQ,
-        pac.XOSC,
-        pac.CLOCKS,
-        pac.PLL_SYS,
-        pac.PLL_USB,
-        &mut pac.RESETS,
-        &mut watchdog,
-    )
-    .ok()
-    .unwrap();
+    let clocks = macropad_clocks!(pac, watchdog);
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
-    let sio = Sio::new(pac.SIO);
-    let pins = Pins::new(
-        pac.IO_BANK0,
-        pac.PADS_BANK0,
-        sio.gpio_bank0,
-        &mut pac.RESETS,
-    );
+    let pins = macropad_pins!(pac);
 
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
-    let _spi_sclk = pins.sclk.into_mode::<FunctionSpi>();
-    let _spi_sclk = pins.mosi.into_mode::<FunctionSpi>();
-    // let _ = pins.miso.into_mode::<PushPullOutput>();
-
-    let spi1 = Spi::<_, _, 8>::new(pac.SPI1).init(
-        &mut pac.RESETS,
-        clocks.peripheral_clock.freq(),
-        16_000_000u32.Hz(),
-        &MODE_0,
-    );
-
     //
 
-    let mut oled_reset = pins.oled_reset.into_mode::<PushPullOutput>();
-
-    let mut disp: GraphicsMode<_> = Builder::new()
-        .connect_spi(
-            spi1,
-            pins.oled_dc.into_mode::<PushPullOutput>(),
-            pins.oled_cs.into_mode::<PushPullOutput>(),
-        )
-        .into();
-
-    disp.reset(&mut oled_reset, &mut delay).unwrap();
-
-    disp.init().unwrap();
-    disp.flush().unwrap();
-    disp.clear();
+    let mut disp = macropad_oled!(pins, clocks, delay, pac);
 
     let mut led_pin = pins.led.into_push_pull_output();
 
@@ -128,6 +60,8 @@ fn main() -> ! {
 
     //
     //
+
+    disp.clear();
 
     let _ = disp.draw_iter((0..10).flat_map(move |y| {
         (70..90).map(move |x| {
