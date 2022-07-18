@@ -114,10 +114,10 @@ fn main() -> ! {
         }
 
         match rotary.update() {
-            Ok(Direction::CounterClockwise) => {
+            Ok(Direction::Clockwise) => {
                 bright = (bright as u16 + 1).min(255) as u8;
             }
-            Ok(Direction::Clockwise) => {
+            Ok(Direction::CounterClockwise) => {
                 bright = (bright as i16 - 1).max(0) as u8;
             }
             Ok(Direction::None) => {}
