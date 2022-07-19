@@ -178,7 +178,7 @@ struct UsbGenerator<'a> {
     modes: MissionModes,
     keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
     usb_device: &'a mut UsbDevice<'a, UsbBus>,
-    pushback: Option<KeyboardReport>,
+    pushed_back: Option<KeyboardOrMouse>,
     active_mission: Option<u8>,
 }
 
@@ -191,36 +191,60 @@ impl<'a> UsbGenerator<'a> {
             modes: MissionModes::new(),
             keyboard_hid,
             usb_device,
-            pushback: None,
+            pushed_back: None,
             active_mission: None,
         }
     }
 
-    pub fn generate_usb_events(&mut self, fire_idx: Option<u8>, ticks: u32) {
-        if let Some(idx) = fire_idx {
-            if self.active_mission == Some(idx) {
-                self.active_mission = None;
-            } else {
-                self.active_mission = Some(idx);
-                if let Some(mission) = self.modes.mission_for(idx) {
-                    mission.reboot()
+    fn curr(&mut self) -> Option<&mut dyn MissionMode<KeyboardOrMouse>> {
+        self.active_mission
+            .and_then(|idx| self.modes.mission_for(idx))
+    }
+
+    pub fn response(
+        &mut self,
+        new_mission: Option<u8>,
+        millis_elapsed: u32,
+    ) -> Option<KeyboardOrMouse> {
+        if self.active_mission != new_mission {
+            let delay_reboot = self.curr().and_then(|mission| mission.maybe_deactivate());
+            match delay_reboot {
+                None => {
+                    self.active_mission = new_mission;
+                    if let Some(curr) = self.curr() {
+                        curr.reboot();
+                        Some(curr.one_usb_pass(millis_elapsed))
+                    } else {
+                        None
+                    }
                 }
+                Some(kr) => Some(kr),
             }
+        } else {
+            self.pushed_back
+                .take()
+                .or_else(|| self.curr().map(|curr| curr.one_usb_pass(millis_elapsed)))
         }
+    }
+
+    pub fn generate_usb_events(&mut self, fire_idx: Option<u8>, ticks: u32) {
+        let new_mission = if let Some(idx) = fire_idx {
+            if self.active_mission == Some(idx) {
+                None
+            } else {
+                Some(idx)
+            }
+        } else {
+            self.active_mission
+        };
 
         self.usb_device.poll(&mut [self.keyboard_hid]);
 
-        let report = match self.pushback.take() {
-            None => self
-                .active_mission
-                .and_then(|idx| self.modes.mission_for(idx))
-                .map(|mission| mission.one_usb_pass(ticks)),
-            Some(report) => Some(KeyboardOrMouse::Keyboard(report)),
-        };
+        let report = self.response(new_mission, ticks);
         match report {
             Some(KeyboardOrMouse::Keyboard(report)) => {
                 if let Err(UsbError::WouldBlock) = self.keyboard_hid.push_input(&report) {
-                    self.pushback = Some(report);
+                    self.pushed_back = Some(KeyboardOrMouse::Keyboard(report));
                 }
             }
             Some(KeyboardOrMouse::Mouse(_)) => {}
