@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "display-exp-1"
+name = "keyboard-exp-1"
 version = "0.1.0"
 
 [dependencies]
@@ -23,6 +23,8 @@ sh1106="*"
 
 rotary-encoder-hal = "*"
 ufmt="*"
+usbd-hid="*"
+usb-device="*"
 
 adafruit-macropad-macros = { path="../adafruit-macropad-macros"}
 macropad-helpers = { path="../macropad-helpers"}

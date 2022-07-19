@@ -26,7 +26,7 @@ use embedded_graphics_core::pixelcolor::BinaryColor;
 use embedded_graphics_core::primitives::Rectangle;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint;
-use graphics_exp::DTWrapper;
+use macropad_helpers::DTWrapper;
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
 use smart_leds_trait::SmartLedsWrite;

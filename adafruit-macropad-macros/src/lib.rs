@@ -2,8 +2,8 @@
 
 pub use adafruit_macropad::hal::clocks::init_clocks_and_plls;
 pub use adafruit_macropad::hal::clocks::Clock;
-pub use adafruit_macropad::hal::gpio::PushPullOutput;
-pub use adafruit_macropad::hal::gpio::{FunctionSpi, Input, PullUp};
+pub use adafruit_macropad::hal::gpio::bank0::Gpio1;
+pub use adafruit_macropad::hal::gpio::{FunctionSpi, Pin, PullUpInput, PushPullOutput};
 pub use adafruit_macropad::hal::pio::PIOExt;
 pub use adafruit_macropad::hal::sio::Sio;
 pub use adafruit_macropad::hal::Spi;
@@ -45,13 +45,13 @@ macro_rules! macropad_oled {
             &$crate::MODE_0,
         );
 
-        let mut oled_reset = $pins.oled_reset.into_mode::<$crate::PushPullOutput>();
+        let mut oled_reset = $pins.oled_reset.into_push_pull_output();
 
         let mut disp: $crate::GraphicsMode<_> = sh1106::Builder::new()
             .connect_spi(
                 spi1,
-                $pins.oled_dc.into_mode::<$crate::PushPullOutput>(),
-                $pins.oled_cs.into_mode::<$crate::PushPullOutput>(),
+                $pins.oled_dc.into_push_pull_output(),
+                $pins.oled_cs.into_push_pull_output(),
             )
             .into();
 
@@ -90,6 +90,29 @@ macro_rules! macropad_clocks {
         .ok()
         .unwrap()
     };
+}
+
+#[macro_export]
+macro_rules! macropad_rotary_encoder {
+    ($pins:expr) => {
+        Rotary::new(
+            $pins.encoder_rota.into_pull_up_input(),
+            $pins.encoder_rotb.into_pull_up_input(),
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! macropad_keypad {
+    ($pins:expr) => {
+        KeysTwelve {
+            key1: $pins.key1.into_pull_up_input(),
+        }
+    };
+}
+
+pub struct KeysTwelve {
+    pub key1: Pin<Gpio1, PullUpInput>,
 }
 
 #[cfg(bacon_check)]
