@@ -153,6 +153,7 @@ where
     ticks: u32,
     key_state: [bool; 12],
     old_key_state: ChangeDetector<[bool; 12]>,
+    state_of_toggle: [bool; 12],
     disp: &'a mut D,
     led_pin: &'a mut Pin<LED, PushPullOutput>,
     neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
@@ -189,6 +190,7 @@ where
             ticks: 0,
             key_state: [false; 12],
             old_key_state: ChangeDetector::new([true; 12]),
+            state_of_toggle: [false; 12],
             disp,
             led_pin,
             neopixels,
@@ -212,7 +214,11 @@ where
             self.bright,
             self.ticks,
             phase,
-            if self.key_state[0] { Some(0) } else { None },
+            if self.state_of_toggle[0] {
+                Some(0)
+            } else {
+                None
+            },
         ));
 
         match self.rotary.update() {
@@ -230,11 +236,15 @@ where
 
         let keys_array = self.keys.array_0based();
         for (idx, state) in self.key_state.iter_mut().enumerate() {
-            *state = keys_array[idx].is_low().unwrap();
+            let pressed = keys_array[idx].is_low().unwrap();
+            if !self.old_key_state.old[idx] && pressed {
+                self.state_of_toggle[idx] = !self.state_of_toggle[idx];
+            }
+            *state = pressed;
         }
 
         self.usb_device.poll(&mut [self.keyboard_hid]);
-        if self.key_state[0] {
+        if self.state_of_toggle[0] {
             let _ = self
                 .keyboard_hid
                 .push_input(&simple_kr1(0, b'w' - b'a' + 4));
@@ -290,7 +300,7 @@ where
                         Point::new(col * diam, row * diam),
                         Size::new(diam as u32, diam as u32),
                     ),
-                    if self.key_state[idx as usize] {
+                    if self.state_of_toggle[idx as usize] {
                         BinaryColor::On
                     } else {
                         BinaryColor::Off
@@ -352,7 +362,7 @@ where
 }
 
 struct ChangeDetector<T> {
-    old: T,
+    pub old: T,
 }
 
 impl<T: PartialEq> ChangeDetector<T> {
