@@ -242,17 +242,16 @@ where
             let _ = self.keyboard_hid.push_input(&simple_kr1(0, 0));
         }
 
-        self.update_display();
+        let _ = self.update_display();
 
         self.ticks = self.ticks.wrapping_add(1);
     }
 
-    fn update_display(&mut self) {
+    fn update_display(&mut self) -> Result<(), E> {
         if self.old_brightness.changed(self.bright) {
             let p1 = Point::new(20, 40);
-            let _ = self
-                .disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On);
+            self.disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
 
             let mut fmt_buffer = UfmtWrapper::<80>::new();
 
@@ -266,22 +265,40 @@ where
                 p1.y + 1,
                 self.disp,
                 embedded_graphics::pixelcolor::BinaryColor::Off,
-            );
+            )?;
         }
 
         if self.old_key_state.changed(self.key_state) {
             let p1 = Point::new(20, 1);
-            let _ = self
-                .disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off);
+            self.disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
             easy_text_at(
                 if self.key_state[0] { "0down" } else { "0up" },
                 p1.x + 1,
                 p1.y + 1,
                 self.disp,
                 embedded_graphics::pixelcolor::BinaryColor::On,
-            );
+            )?;
         }
+
+        let diam = 5;
+        for row in 0..4 {
+            for col in 0..3 {
+                let idx = row * 3 + col;
+                self.disp.fill_solid(
+                    &Rectangle::new(
+                        Point::new(col * diam, row * diam),
+                        Size::new(diam as u32, diam as u32),
+                    ),
+                    if self.key_state[idx as usize] {
+                        BinaryColor::On
+                    } else {
+                        BinaryColor::Off
+                    },
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -322,15 +339,16 @@ pub fn easy_text_at<E, D>(
     y: i32,
     disp: &mut D,
     color: embedded_graphics::pixelcolor::BinaryColor,
-) where
+) -> Result<(), E>
+where
     D: embedded_graphics_core::draw_target::DrawTarget<
         Color = embedded_graphics_core::pixelcolor::BinaryColor,
         Error = E,
     >,
 {
-    let _ = Text::new(msg, embedded_graphics::geometry::Point::new(x, y))
+    Text::new(msg, embedded_graphics::geometry::Point::new(x, y))
         .into_styled(TextStyle::new(Font6x8, color))
-        .draw(&mut DTWrapper { inner: disp });
+        .draw(&mut DTWrapper { inner: disp })
 }
 
 struct ChangeDetector<T> {
