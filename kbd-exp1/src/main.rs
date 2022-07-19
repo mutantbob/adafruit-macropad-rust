@@ -120,88 +120,107 @@ fn main() -> ! {
 
     let _ = disp.flush();
 
-    let mut application = ApplicationLoop::new();
+    let mut application = ApplicationLoop::new(
+        &mut disp,
+        &mut led_pin,
+        &mut neopixels,
+        &mut rotary,
+        &keys,
+        &mut keyboard_hid,
+        &mut usb_device,
+    );
     loop {
-        application.one_pass(
-            &mut disp,
-            &mut led_pin,
-            &mut neopixels,
-            &mut rotary,
-            &keys,
-            &mut keyboard_hid,
-            &mut usb_device,
-        );
-        let _ = disp.flush();
+        application.one_pass();
+        let _ = application.disp.flush();
         delay.delay_ms(1);
     }
 }
 
-struct ApplicationLoop {
+struct ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
+where
+    D: embedded_graphics_core::draw_target::DrawTarget<
+        Color = embedded_graphics_core::pixelcolor::BinaryColor,
+        Error = E,
+    >,
+    LED: PinId,
+    RA: InputPin,
+    RB: InputPin,
+    NEOPIN: PinId,
+    Function<PIO0>: ValidPinMode<NEOPIN>,
+{
     bright: u8,
     old_brightness: ChangeDetector<u8>,
     ticks: u32,
     key_state: [bool; 12],
     old_key_state: ChangeDetector<[bool; 12]>,
+    disp: &'a mut D,
+    led_pin: &'a mut Pin<LED, PushPullOutput>,
+    neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
+    rotary: &'a mut Rotary<RA, RB>,
+    keys: &'a KeysTwelve,
+    hid: &'a mut HIDClass<'a, UsbBus>,
+    usb_device: &'a mut UsbDevice<'a, UsbBus>,
 }
 
-impl ApplicationLoop {
-    pub fn new() -> Self {
+impl<'a, D, LED, NEOPIN, RA, RB, E> ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
+where
+    D: embedded_graphics_core::draw_target::DrawTarget<
+        Color = embedded_graphics_core::pixelcolor::BinaryColor,
+        Error = E,
+    >,
+    LED: PinId,
+    RA: InputPin,
+    RB: InputPin,
+    NEOPIN: PinId,
+    Function<PIO0>: ValidPinMode<NEOPIN>,
+{
+    pub fn new(
+        disp: &'a mut D,
+        led_pin: &'a mut Pin<LED, PushPullOutput>,
+        neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
+        rotary: &'a mut Rotary<RA, RB>,
+        keys: &'a KeysTwelve,
+        hid: &'a mut HIDClass<'a, UsbBus>,
+        usb_device: &'a mut UsbDevice<'a, UsbBus>,
+    ) -> Self {
         ApplicationLoop {
             bright: 200,
             old_brightness: ChangeDetector::new(0),
             ticks: 0,
             key_state: [false; 12],
             old_key_state: ChangeDetector::new([true; 12]),
+            disp,
+            led_pin,
+            neopixels,
+            rotary,
+            keys,
+            hid,
+            usb_device,
         }
     }
 
-    pub fn one_pass<D, LED, NEOPIN, RA, RB, E>(
-        &mut self,
-        disp: &mut D,
-        led_pin: &mut Pin<LED, PushPullOutput>,
-        neopixels: &mut Ws2812<PIO0, SM0, CountDown, NEOPIN>,
-        rotary: &mut Rotary<RA, RB>,
-        keys: &KeysTwelve,
-        hid: &mut HIDClass<UsbBus>,
-        usb_device: &mut UsbDevice<UsbBus>,
-    ) where
-        D: embedded_graphics_core::draw_target::DrawTarget<
-            Color = embedded_graphics_core::pixelcolor::BinaryColor,
-            Error = E,
-        >,
-        LED: PinId,
-        RA: InputPin,
-        RB: InputPin,
-        NEOPIN: PinId,
-        Function<PIO0>: ValidPinMode<NEOPIN>,
-    {
-        let bright = self.bright;
-        let black = [(0, 0, 0); 3];
-        let rgb = [(bright, 0, 0), (0, bright, 0), (0, 0, bright)];
-        let cmy = [
-            (0, bright, bright),
-            (bright, 0, bright),
-            (bright, bright, 0),
-        ];
-
-        // const DECODE: [i8; 4] = [0, 1, 3, 2];
-        // let phase = DECODE[rotary.state as usize];
-        let phase = bright as i8;
+    pub fn one_pass(&mut self) {
+        let phase = self.bright as i8;
 
         if self.ticks & 0x200 == 0 {
-            led_pin.set_high().unwrap();
-            let _ = neopixels.write(wacky_lights(&black, &cmy, phase));
+            self.led_pin.set_high().unwrap();
         } else {
-            led_pin.set_low().unwrap();
-            let _ = neopixels.write(wacky_lights(&black, &rgb, phase));
+            self.led_pin.set_low().unwrap();
         }
 
-        match rotary.update() {
+        let _ = self.neopixels.write(lights_for(
+            self.bright,
+            self.ticks,
+            phase,
+            if self.key_state[0] { Some(0) } else { None },
+        ));
+
+        match self.rotary.update() {
             Ok(Direction::Clockwise) => {
-                self.bright = (bright as u16 + 1).min(255) as u8;
+                self.bright = (self.bright as u16 + 1).min(255) as u8;
             }
             Ok(Direction::CounterClockwise) => {
-                self.bright = (bright as i16 - 1).max(0) as u8;
+                self.bright = (self.bright as i16 - 1).max(0) as u8;
             }
             Ok(Direction::None) => {}
             Err(_) => {
@@ -209,30 +228,26 @@ impl ApplicationLoop {
             }
         }
 
-        self.key_state[0] = keys.key1.is_low().unwrap();
+        self.key_state[0] = self.keys.key1.is_low().unwrap();
 
-        usb_device.poll(&mut [hid]);
+        self.usb_device.poll(&mut [self.hid]);
         if self.key_state[0] {
-            let _ = hid.push_input(&simple_kr1(0, b'w' - b'a' + 4));
+            let _ = self.hid.push_input(&simple_kr1(0, b'w' - b'a' + 4));
         } else {
-            let _ = hid.push_input(&simple_kr1(0, 0));
+            let _ = self.hid.push_input(&simple_kr1(0, 0));
         }
 
-        self.update_display(disp);
+        self.update_display();
 
         self.ticks = self.ticks.wrapping_add(1);
     }
 
-    fn update_display<D, E>(&mut self, disp: &mut D)
-    where
-        D: embedded_graphics_core::draw_target::DrawTarget<
-            Color = embedded_graphics_core::pixelcolor::BinaryColor,
-            Error = E,
-        >,
-    {
+    fn update_display(&mut self) {
         if self.old_brightness.changed(self.bright) {
             let p1 = Point::new(20, 40);
-            let _ = disp.fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On);
+            let _ = self
+                .disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On);
 
             let mut fmt_buffer = UfmtWrapper::<80>::new();
 
@@ -244,19 +259,21 @@ impl ApplicationLoop {
                 // "brightness",
                 p1.x + 1,
                 p1.y + 1,
-                disp,
+                self.disp,
                 embedded_graphics::pixelcolor::BinaryColor::Off,
             );
         }
 
         if self.old_key_state.changed(self.key_state) {
             let p1 = Point::new(20, 1);
-            let _ = disp.fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off);
+            let _ = self
+                .disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off);
             easy_text_at(
                 if self.key_state[0] { "0down" } else { "0up" },
                 p1.x + 1,
                 p1.y + 1,
-                disp,
+                self.disp,
                 embedded_graphics::pixelcolor::BinaryColor::On,
             );
         }
@@ -265,11 +282,33 @@ impl ApplicationLoop {
 
 fn simple_kr1(modifier: u8, key_code_1: u8) -> KeyboardReport {
     KeyboardReport {
-        modifier: modifier,
+        modifier,
         reserved: 0,
         leds: 0,
         keycodes: [key_code_1, 0, 0, 0, 0, 0],
     }
+}
+
+fn lights_for(
+    bright: u8,
+    ticks: u32,
+    phase: i8,
+    white_idx: Option<u8>,
+) -> impl Iterator<Item = (u8, u8, u8)> {
+    let black = [(0, 0, 0); 3];
+    let rgb = [(bright, 0, 0), (0, bright, 0), (0, 0, bright)];
+    let cmy = [
+        (0, bright, bright),
+        (bright, 0, bright),
+        (bright, bright, 0),
+    ];
+
+    wacky_lights(
+        black,
+        if ticks & 0x200 == 0 { cmy } else { rgb },
+        phase,
+        white_idx.map(|idx| (idx, (bright, bright, bright))),
+    )
 }
 
 pub fn easy_text_at<E, D>(
@@ -337,18 +376,32 @@ impl<const N: usize> uWrite for UfmtWrapper<N> {
     }
 }
 
-fn wacky_lights<'a>(
-    black: &'a [(u8, u8, u8); 3],
-    rgb: &'a [(u8, u8, u8); 3],
+fn wacky_lights(
+    black: [(u8, u8, u8); 3],
+    rgb: [(u8, u8, u8); 3],
     phase: i8,
-) -> impl Iterator<Item = (u8, u8, u8)> + 'a {
-    (0..4)
-        .flat_map(move |row| {
-            if (row as i16 - phase as i16) % 4 == 0 {
-                rgb.iter()
+    white_idx: Option<(u8, (u8, u8, u8))>,
+) -> impl Iterator<Item = (u8, u8, u8)> {
+    let mut rval = [(0, 0, 0); 12];
+    for row in 0..4 {
+        for col in 0..3 {
+            let src = if (row as i16 - phase as i16) % 4 == 0 {
+                &rgb
             } else {
-                black.iter()
-            }
-        })
-        .copied()
+                &black
+            };
+            let idx = row * 3 + col;
+            rval[idx] = white_idx
+                .and_then(|(wi, white)| {
+                    if idx == wi as usize {
+                        Some(white)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(src[col]);
+        }
+    }
+
+    rval.into_iter()
 }
