@@ -126,8 +126,8 @@ fn main() -> ! {
         &mut neopixels,
         &mut rotary,
         &keys,
-        &mut keyboard_hid,
         &mut usb_device,
+        &mut keyboard_hid,
     );
     loop {
         application.one_pass();
@@ -158,7 +158,7 @@ where
     neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
     rotary: &'a mut Rotary<RA, RB>,
     keys: &'a KeysTwelve,
-    hid: &'a mut HIDClass<'a, UsbBus>,
+    keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
     usb_device: &'a mut UsbDevice<'a, UsbBus>,
 }
 
@@ -180,8 +180,8 @@ where
         neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
         rotary: &'a mut Rotary<RA, RB>,
         keys: &'a KeysTwelve,
-        hid: &'a mut HIDClass<'a, UsbBus>,
         usb_device: &'a mut UsbDevice<'a, UsbBus>,
+        keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
     ) -> Self {
         ApplicationLoop {
             bright: 200,
@@ -194,7 +194,7 @@ where
             neopixels,
             rotary,
             keys,
-            hid,
+            keyboard_hid,
             usb_device,
         }
     }
@@ -228,13 +228,18 @@ where
             }
         }
 
-        self.key_state[0] = self.keys.key1.is_low().unwrap();
+        let keys_array = self.keys.array_0based();
+        for (idx, state) in self.key_state.iter_mut().enumerate() {
+            *state = keys_array[idx].is_low().unwrap();
+        }
 
-        self.usb_device.poll(&mut [self.hid]);
+        self.usb_device.poll(&mut [self.keyboard_hid]);
         if self.key_state[0] {
-            let _ = self.hid.push_input(&simple_kr1(0, b'w' - b'a' + 4));
+            let _ = self
+                .keyboard_hid
+                .push_input(&simple_kr1(0, b'w' - b'a' + 4));
         } else {
-            let _ = self.hid.push_input(&simple_kr1(0, 0));
+            let _ = self.keyboard_hid.push_input(&simple_kr1(0, 0));
         }
 
         self.update_display();

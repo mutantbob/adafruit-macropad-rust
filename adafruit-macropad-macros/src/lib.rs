@@ -2,13 +2,18 @@
 
 pub use adafruit_macropad::hal::clocks::init_clocks_and_plls;
 pub use adafruit_macropad::hal::clocks::Clock;
-pub use adafruit_macropad::hal::gpio::bank0::Gpio1;
+pub use adafruit_macropad::hal::gpio::bank0::{
+    Gpio1, Gpio10, Gpio11, Gpio12, Gpio2, Gpio3, Gpio4, Gpio5, Gpio6, Gpio7, Gpio8, Gpio9,
+};
+pub use adafruit_macropad::hal::gpio::AnyPin;
 pub use adafruit_macropad::hal::gpio::{FunctionSpi, Pin, PullUpInput, PushPullOutput};
 pub use adafruit_macropad::hal::pio::PIOExt;
 pub use adafruit_macropad::hal::sio::Sio;
 pub use adafruit_macropad::hal::Spi;
 pub use adafruit_macropad::Pins;
 pub use adafruit_macropad::XOSC_CRYSTAL_FREQ;
+use core::convert::Infallible;
+use embedded_hal::digital::v2::InputPin;
 pub use embedded_hal::spi::MODE_0;
 pub use embedded_time::fixed_point::FixedPoint;
 pub use embedded_time::rate::Extensions;
@@ -107,12 +112,75 @@ macro_rules! macropad_keypad {
     ($pins:expr) => {
         KeysTwelve {
             key1: $pins.key1.into_pull_up_input(),
+            key2: $pins.key2.into_pull_up_input(),
+            key3: $pins.key3.into_pull_up_input(),
+            key4: $pins.key4.into_pull_up_input(),
+            key5: $pins.key5.into_pull_up_input(),
+            key6: $pins.key6.into_pull_up_input(),
+            key7: $pins.key7.into_pull_up_input(),
+            key8: $pins.key8.into_pull_up_input(),
+            key9: $pins.key9.into_pull_up_input(),
+            key10: $pins.key10.into_pull_up_input(),
+            key11: $pins.key11.into_pull_up_input(),
+            key12: $pins.key12.into_pull_up_input(),
         }
     };
 }
 
 pub struct KeysTwelve {
     pub key1: Pin<Gpio1, PullUpInput>,
+    pub key2: Pin<Gpio2, PullUpInput>,
+    pub key3: Pin<Gpio3, PullUpInput>,
+    pub key4: Pin<Gpio4, PullUpInput>,
+    pub key5: Pin<Gpio5, PullUpInput>,
+    pub key6: Pin<Gpio6, PullUpInput>,
+    pub key7: Pin<Gpio7, PullUpInput>,
+    pub key8: Pin<Gpio8, PullUpInput>,
+    pub key9: Pin<Gpio9, PullUpInput>,
+    pub key10: Pin<Gpio10, PullUpInput>,
+    pub key11: Pin<Gpio11, PullUpInput>,
+    pub key12: Pin<Gpio12, PullUpInput>,
+}
+
+impl KeysTwelve {
+    pub fn get_0based(&self, idx: i8) -> Option<&dyn InputPin<Error = Infallible>> {
+        self.get_1based(1 + idx)
+    }
+
+    pub fn get_1based(&self, idx: i8) -> Option<&dyn InputPin<Error = Infallible>> {
+        match idx {
+            1 => Some(&self.key1),
+            2 => Some(&self.key2),
+            3 => Some(&self.key3),
+            4 => Some(&self.key4),
+            5 => Some(&self.key5),
+            6 => Some(&self.key6),
+            7 => Some(&self.key7),
+            8 => Some(&self.key8),
+            9 => Some(&self.key9),
+            10 => Some(&self.key10),
+            11 => Some(&self.key11),
+            12 => Some(&self.key12),
+            _ => None,
+        }
+    }
+
+    pub fn array_0based(&self) -> [&dyn InputPin<Error = Infallible>; 12] {
+        [
+            &self.key1,
+            &self.key2,
+            &self.key3,
+            &self.key4,
+            &self.key5,
+            &self.key6,
+            &self.key7,
+            &self.key8,
+            &self.key9,
+            &self.key10,
+            &self.key11,
+            &self.key12,
+        ]
+    }
 }
 
 #[cfg(bacon_check)]
