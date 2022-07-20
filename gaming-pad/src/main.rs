@@ -10,7 +10,7 @@ use core::str::from_utf8_unchecked;
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
-use crate::mission_modes::{IcarusJog, KeyboardOrMouse, MissionMode};
+use crate::mission_modes::{IcarusJog, KeyboardOrMouse, MissionMode, MouseHold};
 use crate::pac::PIO0;
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
 use adafruit_macropad::hal::pio::{PIOExt, SM0};
@@ -42,7 +42,7 @@ use ufmt::{uWrite, uwrite};
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::{UsbDevice, UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
 use usb_device::UsbError;
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
+use usbd_hid::descriptor::{KeyboardReport, MouseReport, SerializedDescriptor};
 use usbd_hid::hid_class::HIDClass;
 use ws2812_pio::Ws2812;
 
@@ -86,6 +86,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
     let mut keyboard_hid = HIDClass::new(&usb_bus, KeyboardReport::desc(), 10);
+    let mut mouse_hid = HIDClass::new(&usb_bus, MouseReport::desc(), 10);
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x239a, 0xbeef))
         .product("macropad-usbd")
         .manufacturer("Bob's mad science")
@@ -93,7 +94,7 @@ fn main() -> ! {
 
     loop {
         //support::poll_logger();
-        if !usb_device.poll(&mut [&mut keyboard_hid]) {
+        if !usb_device.poll(&mut [&mut keyboard_hid, &mut mouse_hid]) {
             continue;
         }
         let state = usb_device.state();
@@ -132,6 +133,7 @@ fn main() -> ! {
         &keys,
         &mut usb_device,
         &mut keyboard_hid,
+        &mut mouse_hid,
     );
     loop {
         let usec = timer.get_counter();
@@ -146,6 +148,7 @@ struct MissionModes {
     icarus_jog_60: IcarusJog,
     icarus_jog_70: IcarusJog,
     icarus_jog_0: IcarusJog,
+    mouse1: MouseHold,
 }
 
 impl MissionModes {
@@ -155,6 +158,8 @@ impl MissionModes {
             3 => Some(&mut self.icarus_jog_70),
             6 => Some(&mut self.icarus_jog_60),
             9 => Some(&mut self.icarus_jog_0),
+
+            1 => Some(&mut self.mouse1),
 
             _ => None,
         }
@@ -168,6 +173,7 @@ impl MissionModes {
             icarus_jog_60: IcarusJog::new(0.7),
             icarus_jog_70: IcarusJog::new(0.6),
             icarus_jog_0: IcarusJog::new(0.0),
+            mouse1: MouseHold::new(),
         }
     }
 }
@@ -176,23 +182,30 @@ impl MissionModes {
 
 struct UsbGenerator<'a> {
     modes: MissionModes,
-    keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
     usb_device: &'a mut UsbDevice<'a, UsbBus>,
+    keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
+    mouse_hid: &'a mut HIDClass<'a, UsbBus>,
     pushed_back: Option<KeyboardOrMouse>,
     active_mission: Option<u8>,
+    new_mission: Option<u8>,
+    debug_msg: UfmtWrapper<200>,
 }
 
 impl<'a> UsbGenerator<'a> {
     pub fn new(
         usb_device: &'a mut UsbDevice<'a, UsbBus>,
         keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
+        mouse_hid: &'a mut HIDClass<'a, UsbBus>,
     ) -> Self {
         UsbGenerator {
             modes: MissionModes::new(),
-            keyboard_hid,
             usb_device,
+            keyboard_hid,
+            mouse_hid,
             pushed_back: None,
             active_mission: None,
+            new_mission: None,
+            debug_msg: UfmtWrapper::new(),
         }
     }
 
@@ -201,16 +214,12 @@ impl<'a> UsbGenerator<'a> {
             .and_then(|idx| self.modes.mission_for(idx))
     }
 
-    pub fn response(
-        &mut self,
-        new_mission: Option<u8>,
-        millis_elapsed: u32,
-    ) -> Option<KeyboardOrMouse> {
-        if self.active_mission != new_mission {
+    pub fn response(&mut self, millis_elapsed: u32) -> Option<KeyboardOrMouse> {
+        if self.active_mission != self.new_mission {
             let delay_reboot = self.curr().and_then(|mission| mission.maybe_deactivate());
             match delay_reboot {
                 None => {
-                    self.active_mission = new_mission;
+                    self.active_mission = self.new_mission;
                     if let Some(curr) = self.curr() {
                         curr.reboot();
                         Some(curr.one_usb_pass(millis_elapsed))
@@ -228,28 +237,45 @@ impl<'a> UsbGenerator<'a> {
     }
 
     pub fn generate_usb_events(&mut self, fire_idx: Option<u8>, ticks: u32) {
-        let new_mission = if let Some(idx) = fire_idx {
-            if self.active_mission == Some(idx) {
-                None
-            } else {
-                Some(idx)
+        self.debug_msg.reset();
+        uwrite!(&mut self.debug_msg, "{:?}", fire_idx);
+        self.new_mission = match fire_idx {
+            Some(idx) => {
+                if self.active_mission == Some(idx) {
+                    None
+                } else {
+                    Some(idx)
+                }
             }
-        } else {
-            self.active_mission
+            None => self.active_mission,
         };
+        uwrite!(&mut self.debug_msg, " {:?}", self.new_mission);
+        uwrite!(&mut self.debug_msg, " {:?}", self.active_mission);
 
-        self.usb_device.poll(&mut [self.keyboard_hid]);
+        self.usb_device
+            .poll(&mut [self.keyboard_hid, self.mouse_hid]);
 
-        let report = self.response(new_mission, ticks);
+        let report = self.response(ticks);
         match report {
             Some(KeyboardOrMouse::Keyboard(report)) => {
                 if let Err(UsbError::WouldBlock) = self.keyboard_hid.push_input(&report) {
                     self.pushed_back = Some(KeyboardOrMouse::Keyboard(report));
                 }
             }
-            Some(KeyboardOrMouse::Mouse(_)) => {}
+            Some(KeyboardOrMouse::Mouse(report)) => {
+                if let Err(UsbError::WouldBlock) = self.mouse_hid.push_input(&report) {
+                    self.pushed_back = Some(KeyboardOrMouse::Mouse(report));
+                }
+            }
             None => {
                 let _ = self.keyboard_hid.push_input(&simple_kr1(0, 0));
+                let _ = self.mouse_hid.push_input(&MouseReport {
+                    buttons: 0,
+                    x: 0,
+                    y: 0,
+                    wheel: 0,
+                    pan: 0,
+                });
             }
         }
     }
@@ -301,6 +327,7 @@ where
         keys: &'a KeysTwelve,
         usb_device: &'a mut UsbDevice<'a, UsbBus>,
         keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
+        mouse_hid: &'a mut HIDClass<'a, UsbBus>,
     ) -> Self {
         ApplicationLoop {
             bright: 200,
@@ -312,7 +339,7 @@ where
             neopixels,
             rotary,
             keys,
-            generator: UsbGenerator::new(usb_device, keyboard_hid),
+            generator: UsbGenerator::new(usb_device, keyboard_hid, mouse_hid),
         }
     }
 
@@ -345,16 +372,17 @@ where
             }
         }
 
-        let keys_array = self.keys.array_0based();
-        let mut fire_array = [false; 12];
-        for (idx, fire) in fire_array.iter_mut().enumerate() {
-            let pressed = keys_array[idx].is_low().unwrap();
-            *fire = !self.old_key_state.old[idx] && pressed;
+        {
+            let keys_array = self.keys.array_0based();
+            for (idx, state) in self.key_state.iter_mut().enumerate() {
+                let pressed = keys_array[idx].is_low().unwrap();
+                *state = pressed;
+            }
         }
 
-        for (idx, state) in self.key_state.iter_mut().enumerate() {
-            let pressed = keys_array[idx].is_low().unwrap();
-            *state = pressed;
+        let mut fire_array = [false; 12];
+        for (idx, fire) in fire_array.iter_mut().enumerate() {
+            *fire = self.key_state[idx] && !self.old_key_state.old[idx];
         }
 
         let fire_idx = fire_array
@@ -419,6 +447,22 @@ where
                 )?;
             }
         }
+
+        if self.generator.debug_msg.cursor > 0 {
+            self.disp.fill_solid(
+                &Rectangle::new(Point::new(0, 9), Size::new(128, 10)),
+                BinaryColor::Off,
+            )?;
+            easy_text_at(
+                self.generator.debug_msg.as_str(),
+                0,
+                10,
+                self.disp,
+                embedded_graphics::pixelcolor::BinaryColor::On,
+            )?;
+            self.generator.debug_msg.reset();
+        }
+
         Ok(())
     }
 }
@@ -506,6 +550,9 @@ impl<const N: usize> UfmtWrapper<N> {
 
     pub fn as_str(&self) -> &str {
         unsafe { from_utf8_unchecked(&self.buffer[..self.cursor]) }
+    }
+    pub fn reset(&mut self) {
+        self.cursor = 0;
     }
 }
 

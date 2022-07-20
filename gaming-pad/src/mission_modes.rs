@@ -1,4 +1,4 @@
-use keycode_translation::{simple_kr1, CodeSequence};
+use keycode_translation::simple_kr1;
 use usbd_hid::descriptor::{KeyboardReport, MouseReport};
 
 pub trait MissionMode<T> {
@@ -7,119 +7,6 @@ pub trait MissionMode<T> {
     fn one_usb_pass(&mut self, millis_elapsed: u32) -> T;
 
     fn maybe_deactivate(&mut self) -> Option<T>;
-}
-
-//
-
-pub struct Ia {
-    generator: CodeSequence<core::iter::Cycle<core::str::Chars<'static>>>,
-    deactivated: bool,
-}
-
-impl Ia {
-    pub fn standard_generator() -> CodeSequence<core::iter::Cycle<core::str::Chars<'static>>> {
-        let chars = "Ia! Ia! Cthulhu fhtagn.  ".chars();
-        CodeSequence::new(chars.cycle())
-    }
-}
-
-impl Default for Ia {
-    fn default() -> Self {
-        Ia {
-            generator: Self::standard_generator(),
-            deactivated: false,
-        }
-    }
-}
-
-impl MissionMode<KeyboardReport> for Ia {
-    fn reboot(&mut self) {
-        self.generator = Self::standard_generator();
-    }
-
-    fn one_usb_pass(&mut self, _millis_elapsed: u32) -> KeyboardReport {
-        self.generator.next().unwrap()
-    }
-
-    fn maybe_deactivate(&mut self) -> Option<KeyboardReport> {
-        if self.deactivated {
-            None
-        } else {
-            self.deactivated = true;
-            Some(simple_kr1(0, 0))
-        }
-    }
-}
-
-//
-/*
-pub struct CallOfCthulhu {
-    generator: CodeSequence<'static>,
-    deactivated: bool,
-}
-
-impl CallOfCthulhu {
-    fn story_text() -> impl Iterator<Item = char> {
-        let orig = include_bytes!("../keycode_translation/src/call-of-cthulhu.txt");
-        orig.iter().cycle().map(|&b| b as char)
-    }
-
-    fn standard_generator() -> CodeSequence<'static> {
-        CodeSequence::new(Box::new(Self::story_text()))
-    }
-}
-
-impl Default for CallOfCthulhu {
-    fn default() -> Self {
-        CallOfCthulhu {
-            generator: Self::standard_generator(),
-            deactivated: false,
-        }
-    }
-}
-
-impl MissionMode<KeyboardReport> for CallOfCthulhu {
-    fn reboot(&mut self) {
-        self.generator = Self::standard_generator();
-    }
-
-    fn one_usb_pass(&mut self, _millis_elapsed: u32) -> KeyboardReport {
-        self.generator.next().unwrap()
-    }
-
-    fn maybe_deactivate(&mut self) -> Option<KeyboardReport> {
-        if self.deactivated {
-            None
-        } else {
-            self.deactivated = true;
-            Some(simple_kr1(0, 0))
-        }
-    }
-}
-*/
-//
-
-#[derive(Default)]
-pub struct Eeeeee {
-    deactivated: bool,
-}
-
-impl MissionMode<KeyboardReport> for Eeeeee {
-    fn reboot(&mut self) {}
-
-    fn one_usb_pass(&mut self, _millis_elapsed: u32) -> KeyboardReport {
-        const CODE: u8 = b'e' - b'a' + 4;
-        simple_kr1(0, CODE)
-    }
-
-    fn maybe_deactivate(&mut self) -> Option<KeyboardReport> {
-        if self.deactivated {
-            None
-        } else {
-            self.deactivated = true;
-            Some(simple_kr1(0, 0))
-        }
-    }
 }
 
 //
@@ -167,13 +54,6 @@ impl MissionMode<KeyboardOrMouse> for IcarusJog {
         self.sprint =
             ((millis_elapsed - phase_millis) % period) < (period as f32 * self.duty_cycle) as u32;
 
-        //support::time_elapse(gpt1, || self.sprint = !self.sprint);
-        /*let mut status = gpt2.output_compare_status(hal::gpt::OutputCompareRegister::One);
-        if status.is_set() {
-            status.clear();
-            self.sprint = !self.sprint
-        }*/
-
         let keyboard_report = simple_kr1(if self.sprint { 2 } else { 0 }, b'w' - b'a' + 4);
         KeyboardOrMouse::Keyboard(keyboard_report)
     }
@@ -192,21 +72,16 @@ impl MissionMode<KeyboardOrMouse> for IcarusJog {
 
 pub struct MouseHold {
     deactivated: bool,
-    down: bool,
 }
 
 impl MouseHold {
     pub fn new() -> Self {
-        MouseHold {
-            deactivated: false,
-            down: false,
-        }
+        MouseHold { deactivated: false }
     }
 }
 
 impl MissionMode<KeyboardOrMouse> for MouseHold {
     fn reboot(&mut self) {
-        self.down = false;
         self.deactivated = false;
     }
 
@@ -232,41 +107,6 @@ impl MissionMode<KeyboardOrMouse> for MouseHold {
                 wheel: 0,
                 pan: 0,
             }))
-        }
-    }
-}
-
-//
-
-pub struct TestKey {
-    key_code: KeyboardReport,
-    deactivated: bool,
-}
-
-impl TestKey {
-    pub fn new(ch: char) -> TestKey {
-        TestKey {
-            key_code: keycode_translation::translate_char(ch).unwrap(),
-            deactivated: false,
-        }
-    }
-}
-
-impl MissionMode<KeyboardReport> for TestKey {
-    fn reboot(&mut self) {
-        // nothing to do
-    }
-
-    fn one_usb_pass(&mut self, _millis_elapsed: u32) -> KeyboardReport {
-        self.key_code
-    }
-
-    fn maybe_deactivate(&mut self) -> Option<KeyboardReport> {
-        if self.deactivated {
-            None
-        } else {
-            self.deactivated = true;
-            Some(simple_kr1(0, 0))
         }
     }
 }
