@@ -139,7 +139,7 @@ fn main() -> ! {
         let usec = timer.get_counter();
         application.one_pass((usec / 1000) as u32);
         let _ = application.display_painter.disp.flush();
-        delay.delay_ms(1);
+        //delay.delay_ms(1);
     }
 }
 
@@ -291,7 +291,7 @@ impl<'a> UsbGenerator<'a> {
         }
         if self.new_mission == MissionUpdate::Preserve {
             self.debug_msg.reset();
-        } else {
+        } else if false {
             let _ = uwrite!(&mut self.debug_msg, "{:?}", fire_idx);
             let _ = uwrite!(&mut self.debug_msg, "\n{:?}", self.new_mission);
             let _ = uwrite!(&mut self.debug_msg, " {:?}", self.active_mission);
@@ -488,6 +488,46 @@ where
         .draw(&mut DTWrapper { inner: disp })
 }
 
+fn paint_multiline_text<D, E>(
+    x: i32,
+    mut y: i32,
+    mut msg: &str,
+    fg: embedded_graphics::pixelcolor::BinaryColor,
+    bg: BinaryColor,
+    disp: &mut D,
+) -> Result<(), E>
+where
+    D: embedded_graphics_core::draw_target::DrawTarget<
+        Color = embedded_graphics_core::pixelcolor::BinaryColor,
+        Error = E,
+    >,
+{
+    loop {
+        let ab = msg.split_once('\n');
+        let (submessage, more) = match ab {
+            Some((a, b)) => (a, Some(b)),
+            None => (msg, None),
+        };
+        const DISPLAY_WIDTH: i32 = 128;
+        disp.fill_solid(
+            &Rectangle::new(Point::new(x, y), Size::new((DISPLAY_WIDTH - x) as u32, 10)),
+            bg,
+        )?;
+
+        easy_text_at(submessage, x, y + 1, disp, fg)?;
+        match more {
+            None => {
+                break;
+            }
+            Some(more) => {
+                msg = more;
+                y += 9;
+            }
+        }
+    }
+    Ok(())
+}
+
 struct ChangeDetector<T> {
     pub old: T,
 }
@@ -544,38 +584,34 @@ where
         debug_msg: &str,
     ) -> Result<(), E> {
         if self.old_brightness.changed(bright) {
-            let p1 = Point::new(20, 40);
-            self.disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
-
-            let mut fmt_buffer = UfmtWrapper::<80>::new();
-
-            // fmt_buffer.write_str("bright");
-            uwrite!(&mut fmt_buffer, "brightness={}", bright).unwrap();
-
-            easy_text_at(
-                fmt_buffer.as_str(),
-                // "brightness",
-                p1.x + 1,
-                p1.y + 1,
-                &mut self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::Off,
-            )?;
+            self.paint_brightness()?;
         }
 
         if self.old_key_state.changed(key_state) {
-            let p1 = Point::new(20, 1);
-            self.disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
-            easy_text_at(
-                if key_state[0] { "0down" } else { "0up" },
-                p1.x + 1,
-                p1.y + 1,
-                &mut self.disp,
+            self.paint_key0_state(key_state)?;
+        }
+
+        if true {
+            return Ok(());
+        }
+
+        self.paint_key_grid(active_mission)?;
+
+        if !debug_msg.is_empty() {
+            paint_multiline_text(
+                0,
+                10,
+                debug_msg,
                 embedded_graphics::pixelcolor::BinaryColor::On,
+                BinaryColor::Off,
+                &mut self.disp,
             )?;
         }
 
+        Ok(())
+    }
+
+    fn paint_key_grid(&mut self, active_mission: Option<u8>) -> Result<(), E> {
         let diam = 5;
         for row in 0..4 {
             for col in 0..3 {
@@ -593,42 +629,41 @@ where
                 )?;
             }
         }
-
-        if !debug_msg.is_empty() {
-            let mut y = 10;
-            let mut msg = debug_msg;
-
-            loop {
-                let ab = msg.split_once('\n');
-                let (submessage, more) = match ab {
-                    Some((a, b)) => (a, Some(b)),
-                    None => (msg, None),
-                };
-                self.disp.fill_solid(
-                    &Rectangle::new(Point::new(0, y), Size::new(128, 10)),
-                    BinaryColor::Off,
-                )?;
-
-                easy_text_at(
-                    submessage,
-                    0,
-                    y + 1,
-                    &mut self.disp,
-                    embedded_graphics::pixelcolor::BinaryColor::On,
-                )?;
-                match more {
-                    None => {
-                        break;
-                    }
-                    Some(more) => {
-                        msg = more;
-                        y += 9;
-                    }
-                }
-            }
-        }
-
         Ok(())
+    }
+
+    fn paint_key0_state(&mut self, key_state: [bool; 12]) -> Result<(), E> {
+        let p1 = Point::new(20, 1);
+        self.disp
+            .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
+        easy_text_at(
+            if key_state[0] { "0down" } else { "0up" },
+            p1.x + 1,
+            p1.y + 1,
+            &mut self.disp,
+            embedded_graphics::pixelcolor::BinaryColor::On,
+        )
+    }
+
+    fn paint_brightness(&mut self) -> Result<(), E> {
+        let p1 = Point::new(20, 40);
+        self.disp
+            .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
+
+        let mut fmt_buffer = UfmtWrapper::<80>::new();
+
+        let bright = self.old_brightness.old;
+        // fmt_buffer.write_str("bright");
+        uwrite!(&mut fmt_buffer, "brightness={}", bright).unwrap();
+
+        easy_text_at(
+            fmt_buffer.as_str(),
+            // "brightness",
+            p1.x + 1,
+            p1.y + 1,
+            &mut self.disp,
+            embedded_graphics::pixelcolor::BinaryColor::Off,
+        )
     }
 }
 //
