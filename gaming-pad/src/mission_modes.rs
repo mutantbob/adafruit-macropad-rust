@@ -1,5 +1,17 @@
-use keycode_translation::simple_kr1;
 use usbd_hid::descriptor::{KeyboardReport, MouseReport};
+
+pub fn simple_kr(modifier: u8, keycodes: [u8; 6]) -> KeyboardReport {
+    KeyboardReport {
+        modifier,
+        reserved: 0,
+        leds: 0,
+        keycodes,
+    }
+}
+
+pub fn simple_kr1(modifier: u8, key_code_1: u8) -> KeyboardReport {
+    simple_kr(modifier, [key_code_1, 0, 0, 0, 0, 0])
+}
 
 pub trait MissionMode<T> {
     fn reboot(&mut self);

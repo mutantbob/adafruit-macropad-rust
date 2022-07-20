@@ -10,8 +10,6 @@ use core::str::from_utf8_unchecked;
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
-use crate::mission_modes::{IcarusJog, KeyboardOrMouse, MissionMode, MouseHold};
-use crate::pac::PIO0;
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
 use adafruit_macropad::hal::pio::{PIOExt, SM0};
 use adafruit_macropad::hal::timer::CountDown;
@@ -22,6 +20,7 @@ use adafruit_macropad_macros::{
     macropad_rotary_encoder, KeysTwelve,
 };
 use bsp::entry;
+use bsp::hal::pac::PIO0;
 use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
 use defmt_rtt as _;
@@ -35,6 +34,7 @@ use embedded_graphics_core::primitives::Rectangle;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_time::fixed_point::FixedPoint;
 use macropad_helpers::DTWrapper;
+use mission_modes::{simple_kr1, IcarusJog, KeyboardOrMouse, MissionMode, MouseHold};
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
 use smart_leds_trait::SmartLedsWrite;
@@ -445,15 +445,6 @@ where
         self.generator.debug_msg.reset();
 
         self.old_key_state.changed(self.key_state);
-    }
-}
-
-fn simple_kr1(modifier: u8, key_code_1: u8) -> KeyboardReport {
-    KeyboardReport {
-        modifier,
-        reserved: 0,
-        leds: 0,
-        keycodes: [key_code_1, 0, 0, 0, 0, 0],
     }
 }
 

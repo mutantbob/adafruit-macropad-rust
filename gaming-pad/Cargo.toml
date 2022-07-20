@@ -28,7 +28,6 @@ usb-device="*"
 
 adafruit-macropad-macros = { path="../adafruit-macropad-macros"}
 macropad-helpers = { path="../macropad-helpers"}
-keycode-translation = { path = "../../teensy-four-way/keycode_translation"}
 
 # We're using a Pico by default on this template
 rp-pico = "0.4"
