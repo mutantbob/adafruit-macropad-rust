@@ -126,7 +126,7 @@ fn main() -> ! {
     let _ = disp.flush();
 
     let mut application = ApplicationLoop::new(
-        &mut disp,
+        disp,
         &mut led_pin,
         &mut neopixels,
         &mut rotary,
@@ -138,7 +138,7 @@ fn main() -> ! {
     loop {
         let usec = timer.get_counter();
         application.one_pass((usec / 1000) as u32);
-        let _ = application.disp.flush();
+        let _ = application.display_painter.disp.flush();
         delay.delay_ms(1);
     }
 }
@@ -341,10 +341,9 @@ where
     Function<PIO0>: ValidPinMode<NEOPIN>,
 {
     bright: u8,
-    old_brightness: ChangeDetector<u8>,
     key_state: [bool; 12],
     old_key_state: ChangeDetector<[bool; 12]>,
-    disp: &'a mut D,
+    display_painter: DisplayPainter<D, E>,
     led_pin: &'a mut Pin<LED, PushPullOutput>,
     neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
     rotary: &'a mut Rotary<RA, RB>,
@@ -365,7 +364,7 @@ where
     Function<PIO0>: ValidPinMode<NEOPIN>,
 {
     pub fn new(
-        disp: &'a mut D,
+        disp: D,
         led_pin: &'a mut Pin<LED, PushPullOutput>,
         neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
         rotary: &'a mut Rotary<RA, RB>,
@@ -376,10 +375,9 @@ where
     ) -> Self {
         ApplicationLoop {
             bright: 200,
-            old_brightness: ChangeDetector::new(0),
             key_state: [false; 12],
             old_key_state: ChangeDetector::new([true; 12]),
-            disp,
+            display_painter: DisplayPainter::new(disp),
             led_pin,
             neopixels,
             rotary,
@@ -438,97 +436,15 @@ where
 
         self.generator.generate_usb_events(fire_idx, epoch_millis);
 
-        let _ = self.update_display();
-    }
+        let _ = self.display_painter.update_display(
+            self.bright,
+            self.key_state,
+            self.generator.active_mission,
+            self.generator.debug_msg.as_str(),
+        );
+        self.generator.debug_msg.reset();
 
-    fn update_display(&mut self) -> Result<(), E> {
-        if self.old_brightness.changed(self.bright) {
-            let p1 = Point::new(20, 40);
-            self.disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
-
-            let mut fmt_buffer = UfmtWrapper::<80>::new();
-
-            // fmt_buffer.write_str("bright");
-            uwrite!(&mut fmt_buffer, "brightness={}", self.bright).unwrap();
-
-            easy_text_at(
-                fmt_buffer.as_str(),
-                // "brightness",
-                p1.x + 1,
-                p1.y + 1,
-                self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::Off,
-            )?;
-        }
-
-        if self.old_key_state.changed(self.key_state) {
-            let p1 = Point::new(20, 1);
-            self.disp
-                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
-            easy_text_at(
-                if self.key_state[0] { "0down" } else { "0up" },
-                p1.x + 1,
-                p1.y + 1,
-                self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::On,
-            )?;
-        }
-
-        let diam = 5;
-        for row in 0..4 {
-            for col in 0..3 {
-                let idx = row * 3 + col;
-                self.disp.fill_solid(
-                    &Rectangle::new(
-                        Point::new(col * diam, row * diam),
-                        Size::new(diam as u32, diam as u32),
-                    ),
-                    if self.generator.active_mission == Some(idx as u8) {
-                        BinaryColor::On
-                    } else {
-                        BinaryColor::Off
-                    },
-                )?;
-            }
-        }
-
-        if self.generator.debug_msg.cursor > 0 {
-            let mut y = 10;
-            let mut msg = self.generator.debug_msg.as_str();
-
-            loop {
-                let ab = msg.split_once('\n');
-                let (submessage, more) = match ab {
-                    Some((a, b)) => (a, Some(b)),
-                    None => (msg, None),
-                };
-                self.disp.fill_solid(
-                    &Rectangle::new(Point::new(0, y), Size::new(128, 10)),
-                    BinaryColor::Off,
-                )?;
-
-                easy_text_at(
-                    submessage,
-                    0,
-                    y + 1,
-                    self.disp,
-                    embedded_graphics::pixelcolor::BinaryColor::On,
-                )?;
-                match more {
-                    None => {
-                        break;
-                    }
-                    Some(more) => {
-                        msg = more;
-                        y += 9;
-                    }
-                }
-            }
-            self.generator.debug_msg.reset();
-        }
-
-        Ok(())
+        self.old_key_state.changed(self.key_state);
     }
 }
 
@@ -600,6 +516,132 @@ impl<T: PartialEq> ChangeDetector<T> {
     }
 }
 
+//
+
+struct DisplayPainter<D, E>
+where
+    D: embedded_graphics_core::draw_target::DrawTarget<
+        Color = embedded_graphics_core::pixelcolor::BinaryColor,
+        Error = E,
+    >,
+{
+    disp: D,
+    old_brightness: ChangeDetector<u8>,
+    old_key_state: ChangeDetector<[bool; 12]>,
+}
+
+impl<D, E> DisplayPainter<D, E>
+where
+    D: embedded_graphics_core::draw_target::DrawTarget<
+        Color = embedded_graphics_core::pixelcolor::BinaryColor,
+        Error = E,
+    >,
+{
+    pub fn new(disp: D) -> Self {
+        DisplayPainter {
+            disp,
+            old_brightness: ChangeDetector::new(0),
+            old_key_state: ChangeDetector::new([true; 12]),
+        }
+    }
+
+    fn update_display(
+        &mut self,
+        bright: u8,
+        key_state: [bool; 12],
+        active_mission: Option<u8>,
+        debug_msg: &str,
+    ) -> Result<(), E> {
+        if self.old_brightness.changed(bright) {
+            let p1 = Point::new(20, 40);
+            self.disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
+
+            let mut fmt_buffer = UfmtWrapper::<80>::new();
+
+            // fmt_buffer.write_str("bright");
+            uwrite!(&mut fmt_buffer, "brightness={}", bright).unwrap();
+
+            easy_text_at(
+                fmt_buffer.as_str(),
+                // "brightness",
+                p1.x + 1,
+                p1.y + 1,
+                &mut self.disp,
+                embedded_graphics::pixelcolor::BinaryColor::Off,
+            )?;
+        }
+
+        if self.old_key_state.changed(key_state) {
+            let p1 = Point::new(20, 1);
+            self.disp
+                .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
+            easy_text_at(
+                if key_state[0] { "0down" } else { "0up" },
+                p1.x + 1,
+                p1.y + 1,
+                &mut self.disp,
+                embedded_graphics::pixelcolor::BinaryColor::On,
+            )?;
+        }
+
+        let diam = 5;
+        for row in 0..4 {
+            for col in 0..3 {
+                let idx = row * 3 + col;
+                self.disp.fill_solid(
+                    &Rectangle::new(
+                        Point::new(col * diam, row * diam),
+                        Size::new(diam as u32, diam as u32),
+                    ),
+                    if active_mission == Some(idx as u8) {
+                        BinaryColor::On
+                    } else {
+                        BinaryColor::Off
+                    },
+                )?;
+            }
+        }
+
+        if !debug_msg.is_empty() {
+            let mut y = 10;
+            let mut msg = debug_msg;
+
+            loop {
+                let ab = msg.split_once('\n');
+                let (submessage, more) = match ab {
+                    Some((a, b)) => (a, Some(b)),
+                    None => (msg, None),
+                };
+                self.disp.fill_solid(
+                    &Rectangle::new(Point::new(0, y), Size::new(128, 10)),
+                    BinaryColor::Off,
+                )?;
+
+                easy_text_at(
+                    submessage,
+                    0,
+                    y + 1,
+                    &mut self.disp,
+                    embedded_graphics::pixelcolor::BinaryColor::On,
+                )?;
+                match more {
+                    None => {
+                        break;
+                    }
+                    Some(more) => {
+                        msg = more;
+                        y += 9;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+//
+
 struct UfmtWrapper<const N: usize> {
     cursor: usize,
     buffer: [u8; N],
@@ -631,6 +673,8 @@ impl<const N: usize> uWrite for UfmtWrapper<N> {
         Ok(())
     }
 }
+
+//
 
 fn wacky_lights(
     black: [(u8, u8, u8); 3],
