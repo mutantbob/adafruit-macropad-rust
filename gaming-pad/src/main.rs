@@ -180,6 +180,45 @@ impl MissionModes {
 
 //
 
+#[derive(PartialEq)]
+pub enum MissionUpdate {
+    Change(Option<u8>),
+    Preserve,
+}
+
+impl MissionUpdate {
+    pub fn should_change(&self, other: Option<u8>) -> Option<Option<u8>> {
+        match self {
+            MissionUpdate::Change(future) => {
+                if *future == other {
+                    None
+                } else {
+                    Some(*future)
+                }
+            }
+            MissionUpdate::Preserve => None,
+        }
+    }
+}
+
+impl ufmt::uDebug for MissionUpdate {
+    fn fmt<W>(&self, ufmt: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized,
+    {
+        match self {
+            MissionUpdate::Change(x) => {
+                ufmt.write_str("Change(")?;
+                x.fmt(ufmt)?;
+                ufmt.write_str(")")
+            }
+            MissionUpdate::Preserve => ufmt.write_str("Preserve"),
+        }
+    }
+}
+
+//
+
 struct UsbGenerator<'a> {
     modes: MissionModes,
     usb_device: &'a mut UsbDevice<'a, UsbBus>,
@@ -187,7 +226,7 @@ struct UsbGenerator<'a> {
     mouse_hid: &'a mut HIDClass<'a, UsbBus>,
     pushed_back: Option<KeyboardOrMouse>,
     active_mission: Option<u8>,
-    new_mission: Option<u8>,
+    new_mission: MissionUpdate,
     debug_msg: UfmtWrapper<200>,
 }
 
@@ -204,7 +243,7 @@ impl<'a> UsbGenerator<'a> {
             mouse_hid,
             pushed_back: None,
             active_mission: None,
-            new_mission: None,
+            new_mission: MissionUpdate::Preserve,
             debug_msg: UfmtWrapper::new(),
         }
     }
@@ -215,42 +254,48 @@ impl<'a> UsbGenerator<'a> {
     }
 
     pub fn response(&mut self, millis_elapsed: u32) -> Option<KeyboardOrMouse> {
-        if self.active_mission != self.new_mission {
-            let delay_reboot = self.curr().and_then(|mission| mission.maybe_deactivate());
-            match delay_reboot {
-                None => {
-                    self.active_mission = self.new_mission;
-                    if let Some(curr) = self.curr() {
-                        curr.reboot();
-                        Some(curr.one_usb_pass(millis_elapsed))
-                    } else {
-                        None
+        match self.new_mission.should_change(self.active_mission) {
+            Some(new_mission) => {
+                let delay_reboot = self.curr().and_then(|mission| mission.maybe_deactivate());
+                match delay_reboot {
+                    None => {
+                        self.active_mission = new_mission;
+                        self.new_mission = MissionUpdate::Preserve;
+                        if let Some(curr) = self.curr() {
+                            curr.reboot();
+                            Some(curr.one_usb_pass(millis_elapsed))
+                        } else {
+                            None
+                        }
                     }
+                    Some(kr) => Some(kr),
                 }
-                Some(kr) => Some(kr),
             }
-        } else {
-            self.pushed_back
+            None => self
+                .pushed_back
                 .take()
-                .or_else(|| self.curr().map(|curr| curr.one_usb_pass(millis_elapsed)))
+                .or_else(|| self.curr().map(|curr| curr.one_usb_pass(millis_elapsed))),
         }
     }
 
     pub fn generate_usb_events(&mut self, fire_idx: Option<u8>, ticks: u32) {
         self.debug_msg.reset();
-        uwrite!(&mut self.debug_msg, "{:?}", fire_idx);
-        self.new_mission = match fire_idx {
-            Some(idx) => {
-                if self.active_mission == Some(idx) {
-                    None
-                } else {
-                    Some(idx)
-                }
-            }
-            None => self.active_mission,
-        };
-        uwrite!(&mut self.debug_msg, " {:?}", self.new_mission);
-        uwrite!(&mut self.debug_msg, " {:?}", self.active_mission);
+
+        if let Some(idx) = fire_idx {
+            self.new_mission = if self.active_mission == Some(idx) {
+                let _ = uwrite!(&mut self.debug_msg, "D ");
+                MissionUpdate::Change(None)
+            } else {
+                MissionUpdate::Change(Some(idx))
+            };
+        }
+        if self.new_mission == MissionUpdate::Preserve {
+            self.debug_msg.reset();
+        } else {
+            let _ = uwrite!(&mut self.debug_msg, "{:?}", fire_idx);
+            let _ = uwrite!(&mut self.debug_msg, "\n{:?}", self.new_mission);
+            let _ = uwrite!(&mut self.debug_msg, " {:?}", self.active_mission);
+        }
 
         self.usb_device
             .poll(&mut [self.keyboard_hid, self.mouse_hid]);
@@ -449,17 +494,37 @@ where
         }
 
         if self.generator.debug_msg.cursor > 0 {
-            self.disp.fill_solid(
-                &Rectangle::new(Point::new(0, 9), Size::new(128, 10)),
-                BinaryColor::Off,
-            )?;
-            easy_text_at(
-                self.generator.debug_msg.as_str(),
-                0,
-                10,
-                self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::On,
-            )?;
+            let mut y = 10;
+            let mut msg = self.generator.debug_msg.as_str();
+
+            loop {
+                let ab = msg.split_once('\n');
+                let (submessage, more) = match ab {
+                    Some((a, b)) => (a, Some(b)),
+                    None => (msg, None),
+                };
+                self.disp.fill_solid(
+                    &Rectangle::new(Point::new(0, y), Size::new(128, 10)),
+                    BinaryColor::Off,
+                )?;
+
+                easy_text_at(
+                    submessage,
+                    0,
+                    y + 1,
+                    self.disp,
+                    embedded_graphics::pixelcolor::BinaryColor::On,
+                )?;
+                match more {
+                    None => {
+                        break;
+                    }
+                    Some(more) => {
+                        msg = more;
+                        y += 9;
+                    }
+                }
+            }
             self.generator.debug_msg.reset();
         }
 
