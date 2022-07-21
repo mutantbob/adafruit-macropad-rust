@@ -24,16 +24,17 @@ use bsp::entry;
 use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
 use defmt_rtt as _;
-use embedded_graphics::drawable::Drawable;
-use embedded_graphics::fonts::{Font6x8, Text};
-use embedded_graphics::style::TextStyle;
-use embedded_graphics_core::draw_target::DrawTarget as DT_;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::text::renderer::TextRenderer;
+use embedded_graphics::text::Text;
+use embedded_graphics_core::draw_target::{DrawTarget as DT_, DrawTarget};
 use embedded_graphics_core::geometry::{Point, Size};
 use embedded_graphics_core::pixelcolor::BinaryColor;
 use embedded_graphics_core::primitives::Rectangle;
+use embedded_graphics_core::Drawable;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_time::fixed_point::FixedPoint;
-use macropad_helpers::DTWrapper;
+use embedded_vintage_fonts::FONT_6X8;
 use panic_probe as _;
 use rotary_encoder_hal::{Direction, Rotary};
 use smart_leds_trait::SmartLedsWrite;
@@ -108,11 +109,11 @@ fn main() -> ! {
     let _ = disp.draw_iter((0..10).flat_map(move |y| {
         (70..90).map(move |x| {
             embedded_graphics_core::Pixel(
-                embedded_graphics_core::prelude::Point::new(x, y),
+                Point::new(x, y),
                 if 0 == 1 & (x + y) {
-                    embedded_graphics_core::pixelcolor::BinaryColor::On
+                    BinaryColor::On
                 } else {
-                    embedded_graphics_core::pixelcolor::BinaryColor::Off
+                    BinaryColor::Off
                 },
             )
         })
@@ -138,10 +139,7 @@ fn main() -> ! {
 
 struct ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
 where
-    D: embedded_graphics_core::draw_target::DrawTarget<
-        Color = embedded_graphics_core::pixelcolor::BinaryColor,
-        Error = E,
-    >,
+    D: DrawTarget<Color = BinaryColor, Error = E>,
     LED: PinId,
     RA: InputPin,
     RB: InputPin,
@@ -165,10 +163,7 @@ where
 
 impl<'a, D, LED, NEOPIN, RA, RB, E> ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
 where
-    D: embedded_graphics_core::draw_target::DrawTarget<
-        Color = embedded_graphics_core::pixelcolor::BinaryColor,
-        Error = E,
-    >,
+    D: DrawTarget<Color = BinaryColor, Error = E>,
     LED: PinId,
     RA: InputPin,
     RB: InputPin,
@@ -274,7 +269,7 @@ where
                 p1.x + 1,
                 p1.y + 1,
                 self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::Off,
+                MonoTextStyle::new(&FONT_6X8, BinaryColor::Off),
             )?;
         }
 
@@ -287,7 +282,7 @@ where
                 p1.x + 1,
                 p1.y + 1,
                 self.disp,
-                embedded_graphics::pixelcolor::BinaryColor::On,
+                MonoTextStyle::new(&FONT_6X8, BinaryColor::Off),
             )?;
         }
 
@@ -343,22 +338,20 @@ fn lights_for(
     )
 }
 
-pub fn easy_text_at<E, D>(
+pub fn easy_text_at<C, D, E, S>(
     msg: &str,
     x: i32,
     y: i32,
     disp: &mut D,
-    color: embedded_graphics::pixelcolor::BinaryColor,
-) -> Result<(), E>
+    style: S,
+) -> Result<Point, E>
 where
-    D: embedded_graphics_core::draw_target::DrawTarget<
-        Color = embedded_graphics_core::pixelcolor::BinaryColor,
-        Error = E,
-    >,
+    D: DrawTarget<Color = C, Error = E>,
+    S: TextRenderer<Color = C>,
 {
-    Text::new(msg, embedded_graphics::geometry::Point::new(x, y))
-        .into_styled(TextStyle::new(Font6x8, color))
-        .draw(&mut DTWrapper { inner: disp })
+    Text::new(msg, Point::new(x, y), style).draw(
+        disp, // &mut DTWrapper { inner: disp }
+    )
 }
 
 struct ChangeDetector<T> {

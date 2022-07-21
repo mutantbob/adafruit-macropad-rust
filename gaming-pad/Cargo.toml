@@ -18,8 +18,11 @@ adafruit-macropad = "*"
 ws2812-pio = "0.3.0"
 smart-leds-trait = "*"
 embedded-graphics-core = "*"
-embedded-graphics = "*"
+embedded-graphics = "0.7.1"
 sh1106="*"
+bitmap-font="*"
+embedded-vintage-fonts = "*"
+
 
 rotary-encoder-hal = "*"
 ufmt="*"
@@ -27,7 +30,6 @@ usbd-hid="*"
 usb-device="*"
 
 adafruit-macropad-macros = { path="../adafruit-macropad-macros"}
-macropad-helpers = { path="../macropad-helpers"}
 
 # We're using a Pico by default on this template
 rp-pico = "0.4"

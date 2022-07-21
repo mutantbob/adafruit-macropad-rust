@@ -1,29 +1,30 @@
 use crate::{ChangeDetector, UfmtWrapper};
-use embedded_graphics::drawable::Drawable;
-use embedded_graphics::fonts::{Font6x8, Text};
-use embedded_graphics::style::TextStyle;
-use embedded_graphics_core::geometry::{Point, Size};
-use embedded_graphics_core::pixelcolor::BinaryColor;
-use embedded_graphics_core::primitives::Rectangle;
-use macropad_helpers::DTWrapper;
+use bitmap_font::tamzen::FONT_8x15;
+use bitmap_font::TextStyle;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::{Point, Size};
+use embedded_graphics::primitives::Rectangle;
+use embedded_graphics::text::renderer::TextRenderer;
+use embedded_graphics::text::Text;
+use embedded_graphics_core::Drawable;
+use embedded_vintage_fonts::FONT_6X8;
 use ufmt::uwrite;
 
-pub fn easy_text_at<E, D>(
+pub fn easy_text_at<C, D, E, S>(
     msg: &str,
     x: i32,
     y: i32,
     disp: &mut D,
-    color: embedded_graphics::pixelcolor::BinaryColor,
-) -> Result<(), E>
+    style: S,
+) -> Result<Point, E>
 where
-    D: embedded_graphics_core::draw_target::DrawTarget<
-        Color = embedded_graphics_core::pixelcolor::BinaryColor,
-        Error = E,
-    >,
+    D: embedded_graphics_core::prelude::DrawTarget<Color = C, Error = E>,
+    S: TextRenderer<Color = C>,
 {
-    Text::new(msg, embedded_graphics::geometry::Point::new(x, y))
-        .into_styled(TextStyle::new(Font6x8, color))
-        .draw(&mut DTWrapper { inner: disp })
+    Text::new(msg, embedded_graphics::geometry::Point::new(x, y), style).draw(
+        disp, // &mut DTWrapper { inner: disp }
+    )
 }
 
 fn paint_multiline_text<D, E>(
@@ -52,7 +53,13 @@ where
             bg,
         )?;
 
-        easy_text_at(submessage, x, y + 1, disp, fg)?;
+        easy_text_at(
+            submessage,
+            x,
+            y + 1,
+            disp,
+            MonoTextStyle::new(&FONT_6X8, fg),
+        )?;
         match more {
             None => {
                 break;
@@ -97,23 +104,38 @@ where
 
     pub fn idle_display(&mut self) -> Result<(), E> {
         const LABELS: [[&str; 3]; 4] = [
-            ["sprint", "mine", "   -   "],
-            ["jog 70%", "   -   ", "   -   "],
-            ["jog 60%", "   -   ", "   -   "],
-            ["walk", "   -   ", "   -   "],
+            ["sprint", "mine", "-"],
+            ["jog 70%", "-", "-"],
+            ["jog 60%", "-", "-"],
+            ["walk", "-", "-"],
         ];
         self.disp
             .clear(embedded_graphics_core::pixelcolor::BinaryColor::Off)?;
+
+        easy_text_at(
+            "Bob's Macro Pad",
+            1,
+            0,
+            &mut self.disp,
+            TextStyle::new(
+                &FONT_8x15,
+                embedded_graphics_core::pixelcolor::BinaryColor::On,
+            ),
+        )?;
+
         for (row, labels) in LABELS.iter().enumerate() {
             for (col, label) in labels.iter().enumerate() {
-                let x = (128 + 1) * col / 3;
-                let y = 10 * row;
+                let x = (128 + 1) * col / 3 + 21 - label.len() * 3;
+                let y = 10 * row + 25;
                 easy_text_at(
                     *label,
                     x as i32,
                     y as i32,
                     &mut self.disp,
-                    embedded_graphics::pixelcolor::BinaryColor::On,
+                    MonoTextStyle::new(
+                        &FONT_6X8,
+                        embedded_graphics_core::pixelcolor::BinaryColor::On,
+                    ),
                 )?;
             }
         }
@@ -176,7 +198,7 @@ where
         Ok(())
     }
 
-    fn paint_key0_state(&mut self, key_state: [bool; 12]) -> Result<(), E> {
+    fn paint_key0_state(&mut self, key_state: [bool; 12]) -> Result<Point, E> {
         let p1 = Point::new(20, 1);
         self.disp
             .fill_solid(&Rectangle::new(p1, Size::new(100, 10)), BinaryColor::Off)?;
@@ -185,11 +207,14 @@ where
             p1.x + 1,
             p1.y + 1,
             &mut self.disp,
-            embedded_graphics::pixelcolor::BinaryColor::On,
+            MonoTextStyle::new(
+                &FONT_6X8,
+                embedded_graphics_core::pixelcolor::BinaryColor::On,
+            ),
         )
     }
 
-    fn paint_brightness(&mut self) -> Result<(), E> {
+    fn paint_brightness(&mut self) -> Result<Point, E> {
         let p1 = Point::new(20, 40);
         self.disp
             .fill_solid(&Rectangle::new(p1, Size::new(100, 60)), BinaryColor::On)?;
@@ -206,7 +231,10 @@ where
             p1.x + 1,
             p1.y + 1,
             &mut self.disp,
-            embedded_graphics::pixelcolor::BinaryColor::Off,
+            MonoTextStyle::new(
+                &FONT_6X8,
+                embedded_graphics_core::pixelcolor::BinaryColor::On,
+            ),
         )
     }
 }
