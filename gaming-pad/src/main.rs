@@ -415,13 +415,17 @@ where
 
         self.generator.generate_usb_events(fire_idx, epoch_millis);
 
-        let _ = self.display_painter.update_display(
-            self.bright,
-            self.key_state,
-            self.generator.active_mission,
-            self.generator.debug_msg.as_str(),
-        );
-        self.generator.debug_msg.reset();
+        if false {
+            let _ = self.display_painter.update_display(
+                self.bright,
+                self.key_state,
+                self.generator.active_mission,
+                self.generator.debug_msg.as_str(),
+            );
+            self.generator.debug_msg.reset();
+        } else {
+            let _ = self.display_painter.idle_display();
+        }
 
         self.old_key_state.changed(self.key_state);
     }

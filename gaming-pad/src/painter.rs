@@ -95,6 +95,31 @@ where
         }
     }
 
+    pub fn idle_display(&mut self) -> Result<(), E> {
+        const LABELS: [[&str; 3]; 4] = [
+            ["sprint", "mine", "   -   "],
+            ["jog 70%", "   -   ", "   -   "],
+            ["jog 60%", "   -   ", "   -   "],
+            ["walk", "   -   ", "   -   "],
+        ];
+        self.disp
+            .clear(embedded_graphics_core::pixelcolor::BinaryColor::Off)?;
+        for (row, labels) in LABELS.iter().enumerate() {
+            for (col, label) in labels.iter().enumerate() {
+                let x = (128 + 1) * col / 3;
+                let y = 10 * row;
+                easy_text_at(
+                    *label,
+                    x as i32,
+                    y as i32,
+                    &mut self.disp,
+                    embedded_graphics::pixelcolor::BinaryColor::On,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn update_display(
         &mut self,
         bright: u8,
