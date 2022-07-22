@@ -29,8 +29,6 @@ ufmt="*"
 usbd-hid="*"
 usb-device="*"
 
-adafruit-macropad-macros = { path="../adafruit-macropad-macros"}
-
 # We're using a Pico by default on this template
 rp-pico = "0.4"
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead
@@ -100,3 +98,9 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 3
+
+
+[patch.crates-io]
+
+adafruit-macropad = { path = "../../../vendor/rp-hal/boards/adafruit-macropad"}
+rp2040-hal = { path = "../../../vendor/rp-hal/rp2040-hal"}

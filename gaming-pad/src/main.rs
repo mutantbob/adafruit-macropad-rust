@@ -15,7 +15,7 @@ use adafruit_macropad::hal::pio::{PIOExt, SM0};
 use adafruit_macropad::hal::timer::CountDown;
 use adafruit_macropad::hal::usb::UsbBus;
 use adafruit_macropad::hal::Timer;
-use adafruit_macropad_macros::{
+use adafruit_macropad::{
     macropad_clocks, macropad_keypad, macropad_neopixels, macropad_oled, macropad_pins,
     macropad_rotary_encoder, KeysTwelve,
 };

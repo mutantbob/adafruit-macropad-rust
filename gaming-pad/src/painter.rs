@@ -82,6 +82,7 @@ where
         Error = E,
     >,
 {
+    pub dirty: bool,
     pub disp: D,
     old_brightness: ChangeDetector<u8>,
     old_key_state: ChangeDetector<[bool; 12]>,
@@ -96,6 +97,7 @@ where
 {
     pub fn new(disp: D) -> Self {
         DisplayPainter {
+            dirty: true,
             disp,
             old_brightness: ChangeDetector::new(0),
             old_key_state: ChangeDetector::new([true; 12]),
@@ -103,6 +105,10 @@ where
     }
 
     pub fn idle_display(&mut self) -> Result<(), E> {
+        if !self.dirty {
+            return Ok(());
+        }
+
         const LABELS: [[&str; 3]; 4] = [
             ["sprint", "mine", "-"],
             ["jog 70%", "-", "-"],
@@ -139,6 +145,7 @@ where
                 )?;
             }
         }
+        self.dirty = false;
         Ok(())
     }
 
