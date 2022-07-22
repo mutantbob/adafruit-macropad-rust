@@ -11,25 +11,26 @@ use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
+use adafruit_macropad::hal::multicore::{Multicore, Stack};
 use adafruit_macropad::hal::pio::{PIOExt, SM0};
+use adafruit_macropad::hal::sio::SioFifo;
 use adafruit_macropad::hal::timer::CountDown;
 use adafruit_macropad::hal::usb::UsbBus;
 use adafruit_macropad::hal::Timer;
 use adafruit_macropad::{
     macropad_clocks, macropad_keypad, macropad_neopixels, macropad_oled, macropad_pins,
-    macropad_rotary_encoder, KeysTwelve,
+    macropad_rotary_encoder, Sio,
 };
 use bsp::entry;
 use bsp::hal::pac::PIO0;
 use bsp::hal::{clocks::Clock, pac, watchdog::Watchdog};
 use defmt::*;
 use defmt_rtt as _;
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint;
 use mission_modes::{simple_kr1, IcarusJog, KeyboardOrMouse, MissionMode, MouseHold};
 use painter::DisplayPainter;
 use panic_probe as _;
-use rotary_encoder_hal::{Direction, Rotary};
 use smart_leds_trait::SmartLedsWrite;
 use ufmt::{uWrite, uwrite};
 use usb_device::bus::UsbBusAllocator;
@@ -39,8 +40,11 @@ use usbd_hid::descriptor::{KeyboardReport, MouseReport, SerializedDescriptor};
 use usbd_hid::hid_class::HIDClass;
 use ws2812_pio::Ws2812;
 
+mod core1;
 mod mission_modes;
 mod painter;
+
+static mut CORE1_STACK: Stack<4096> = Stack::new();
 
 #[entry]
 fn main() -> ! {
@@ -53,8 +57,8 @@ fn main() -> ! {
     let clocks = macropad_clocks!(pac, watchdog);
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
-
-    let pins = macropad_pins!(pac);
+    let mut sio = Sio::new(pac.SIO);
+    let pins = macropad_pins!(pac, sio);
 
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
@@ -68,7 +72,7 @@ fn main() -> ! {
 
     //
 
-    let mut rotary = macropad_rotary_encoder!(pins);
+    let rotary = macropad_rotary_encoder!(pins);
 
     let keys = macropad_keypad!(pins);
 
@@ -104,16 +108,24 @@ fn main() -> ! {
 
     disp.clear();
 
+    //let sys_freq = clocks.system_clock.freq().integer();
+    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
+    let cores = mc.cores();
+    let core1 = &mut cores[1];
+    let _test = core1.spawn(unsafe { &mut CORE1_STACK.mem }, move || {
+        core1::core1_task(rotary, keys)
+    });
+
     let mut application = ApplicationLoop::new(
         disp,
         &mut led_pin,
         &mut neopixels,
-        &mut rotary,
-        &keys,
+        sio.fifo,
         &mut usb_device,
         &mut keyboard_hid,
         &mut mouse_hid,
     );
+
     loop {
         let usec = timer.get_counter();
         application.one_pass((usec / 1000) as u32);
@@ -307,15 +319,13 @@ impl<'a> UsbGenerator<'a> {
 
 //
 
-struct ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
+struct ApplicationLoop<'a, D, LED, NEOPIN, E>
 where
     D: embedded_graphics_core::draw_target::DrawTarget<
         Color = embedded_graphics_core::pixelcolor::BinaryColor,
         Error = E,
     >,
     LED: PinId,
-    RA: InputPin,
-    RB: InputPin,
     NEOPIN: PinId,
     Function<PIO0>: ValidPinMode<NEOPIN>,
 {
@@ -325,20 +335,18 @@ where
     display_painter: DisplayPainter<D, E>,
     led_pin: &'a mut Pin<LED, PushPullOutput>,
     neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
-    rotary: &'a mut Rotary<RA, RB>,
-    keys: &'a KeysTwelve,
+    fifo: SioFifo,
     generator: UsbGenerator<'a>,
 }
 
-impl<'a, D, LED, NEOPIN, RA, RB, E> ApplicationLoop<'a, D, LED, NEOPIN, RA, RB, E>
+impl<'a, D, LED, NEOPIN, E> ApplicationLoop<'a, D, LED, NEOPIN, E>
 where
     D: embedded_graphics_core::draw_target::DrawTarget<
         Color = embedded_graphics_core::pixelcolor::BinaryColor,
         Error = E,
     >,
     LED: PinId,
-    RA: InputPin,
-    RB: InputPin,
+
     NEOPIN: PinId,
     Function<PIO0>: ValidPinMode<NEOPIN>,
 {
@@ -346,8 +354,7 @@ where
         disp: D,
         led_pin: &'a mut Pin<LED, PushPullOutput>,
         neopixels: &'a mut Ws2812<PIO0, SM0, CountDown<'a>, NEOPIN>,
-        rotary: &'a mut Rotary<RA, RB>,
-        keys: &'a KeysTwelve,
+        fifo: SioFifo,
         usb_device: &'a mut UsbDevice<'a, UsbBus>,
         keyboard_hid: &'a mut HIDClass<'a, UsbBus>,
         mouse_hid: &'a mut HIDClass<'a, UsbBus>,
@@ -359,8 +366,7 @@ where
             display_painter: DisplayPainter::new(disp),
             led_pin,
             neopixels,
-            rotary,
-            keys,
+            fifo,
             generator: UsbGenerator::new(usb_device, keyboard_hid, mouse_hid),
         }
     }
@@ -381,37 +387,16 @@ where
             self.generator.active_mission,
         ));
 
-        match self.rotary.update() {
-            Ok(Direction::Clockwise) => {
-                self.bright = (self.bright as u16 + 1).min(255) as u8;
+        let fire_idx = if let Some((rotary_delta, raw_fire_idx)) = poll_core1(&mut self.fifo) {
+            self.bright = (self.bright as i32 + rotary_delta).clamp(0, 255) as u8;
+            if raw_fire_idx < 0 {
+                None
+            } else {
+                Some(raw_fire_idx as u8)
             }
-            Ok(Direction::CounterClockwise) => {
-                self.bright = (self.bright as i16 - 1).max(0) as u8;
-            }
-            Ok(Direction::None) => {}
-            Err(_) => {
-                // don't care
-            }
-        }
-
-        {
-            let keys_array = self.keys.array_0based();
-            for (idx, state) in self.key_state.iter_mut().enumerate() {
-                let pressed = keys_array[idx].is_low().unwrap();
-                *state = pressed;
-            }
-        }
-
-        let mut fire_array = [false; 12];
-        for (idx, fire) in fire_array.iter_mut().enumerate() {
-            *fire = self.key_state[idx] && !self.old_key_state.old[idx];
-        }
-
-        let fire_idx = fire_array
-            .iter()
-            .enumerate()
-            .find(|(_, b)| **b)
-            .map(|(idx, _)| idx as u8);
+        } else {
+            None
+        };
 
         self.generator.generate_usb_events(fire_idx, epoch_millis);
 
@@ -429,6 +414,18 @@ where
 
         self.old_key_state.changed(self.key_state);
     }
+}
+
+fn poll_core1(fifo: &mut SioFifo) -> Option<(i32, i32)> {
+    if !fifo.is_write_ready() {
+        return None;
+    }
+
+    fifo.write(0);
+
+    let rotary_delta = fifo.read_blocking() as i32;
+    let raw_fire_idx = fifo.read_blocking() as i32;
+    Some((rotary_delta, raw_fire_idx))
 }
 
 fn lights_for(
