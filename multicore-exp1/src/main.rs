@@ -20,7 +20,7 @@ use hal::sio::Sio;
 use panic_probe as _;
 
 // Alias for our HAL crate
-use adafruit_feather_rp2040::hal;
+use adafruit_feather_rp2040::hal as hal;
 
 // A shorter alias for the Peripheral Access Crate, which provides low-level
 // register access
@@ -31,9 +31,9 @@ use embedded_hal::digital::v2::ToggleableOutputPin;
 
 /// The linker will place this boot block at the start of our program image. We
 /// need this to help the ROM bootloader get our code up and running.
-#[link_section = ".boot2"]
+/*#[link_section = ".boot2"]
 #[used]
-pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
+pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;*/
 
 /// External high-speed crystal on the Raspberry Pi Pico board is 12 MHz. Adjust
 /// if your board has a different frequency
@@ -95,9 +95,9 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
     let mut led1 = pins.gpio2.into_push_pull_output();
-    let mut led2 = pins.gpio13.into_push_pull_output();
+    let mut led2 = pins.gpio13.into_push_pull_output();/*
     embedded_hal::digital::v2::OutputPin::set_high(&mut led1);
-    embedded_hal::digital::v2::OutputPin::set_high(&mut led2);
+    embedded_hal::digital::v2::OutputPin::set_high(&mut led2);*/
 
     // Set up the delay for the first core.
     let sys_freq = clocks.system_clock.freq().integer();
