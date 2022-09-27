@@ -287,7 +287,24 @@ fn poll_core1(fifo: &mut SioFifo) -> Option<InterCoreMessage> {
 }
 
 fn lights_for(jog_axis: JogAxis, last_key: Option<u8>) -> impl Iterator<Item = (u8, u8, u8)> {
-    let mut rgbs = [(0, 0, 0); 12];
+    const X_COLOR: (u8, u8, u8) = (255, 0, 255);
+    const Y_COLOR: (u8, u8, u8) = (0, 255, 255);
+    const Z_COLOR: (u8, u8, u8) = (0, 0, 255);
+
+    let mut rgbs = [
+        (0, 0, 0),
+        Y_COLOR,
+        Z_COLOR,
+        X_COLOR,
+        (255, 255, 0),
+        X_COLOR,
+        (0, 0, 0),
+        Y_COLOR,
+        Z_COLOR,
+        X_COLOR,
+        Y_COLOR,
+        Z_COLOR,
+    ];
 
     if let Some(idx) = last_key {
         rgbs[idx as usize] = (255, 255, 255);
@@ -299,17 +316,17 @@ fn lights_for(jog_axis: JogAxis, last_key: Option<u8>) -> impl Iterator<Item = (
 
     let dim = 32;
     rgbs[9] = if jog_axis == JogAxis::X {
-        (255, 0, 255)
+        X_COLOR
     } else {
         (dim, 0, dim)
     };
     rgbs[10] = if jog_axis == JogAxis::Y {
-        (0, 255, 255)
+        Y_COLOR
     } else {
         (0, dim, dim)
     };
     rgbs[11] = if jog_axis == JogAxis::Z {
-        (0, 0, 255)
+        Z_COLOR
     } else {
         (0, 0, dim)
     };
@@ -372,36 +389,6 @@ impl<const N: usize> uWrite for UfmtWrapper<N> {
 }
 
 //
-
-fn wacky_lights(
-    black: [(u8, u8, u8); 3],
-    rgb: [(u8, u8, u8); 3],
-    phase: i8,
-    white_idx: Option<(u8, (u8, u8, u8))>,
-) -> impl Iterator<Item = (u8, u8, u8)> {
-    let mut rval = [(0, 0, 0); 12];
-    for row in 0..4 {
-        for col in 0..3 {
-            let src = if (row as i16 - phase as i16) % 4 == 0 {
-                &rgb
-            } else {
-                &black
-            };
-            let idx = row * 3 + col;
-            rval[idx] = white_idx
-                .and_then(|(wi, white)| {
-                    if idx == wi as usize {
-                        Some(white)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(src[col]);
-        }
-    }
-
-    rval.into_iter()
-}
 
 pub fn simple_kr(modifier: u8, keycodes: [u8; 6]) -> KeyboardReport {
     KeyboardReport {
