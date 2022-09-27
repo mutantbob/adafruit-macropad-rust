@@ -75,6 +75,7 @@ where
     keys: KeysTwelve,
 
     jog_axis: JogAxis,
+    jog_scale: u8,
     last_jog: LastJog,
     last_key: Option<u8>,
     key_state: [bool; 12],
@@ -91,6 +92,7 @@ where
             rotary,
             keys,
             jog_axis: JogAxis::X,
+            jog_scale: 0,
             last_jog: LastJog::None,
             last_key: None,
             key_state: [false; 12],
@@ -165,6 +167,7 @@ where
                     jog_axis: self.jog_axis,
                     jog_action: self.last_jog,
                     last_key: self.last_key,
+                    jog_scale: self.jog_scale,
                 }
                 .send(fifo);
             }
@@ -193,6 +196,7 @@ where
 pub struct InterCoreMessage {
     pub jog_axis: JogAxis,
     pub jog_action: LastJog,
+    pub jog_scale: u8,
     pub last_key: Option<u8>,
 }
 
@@ -202,6 +206,8 @@ impl InterCoreMessage {
 
         fifo.write_blocking(self.jog_action.as_int());
 
+        fifo.write_blocking(self.jog_scale as u32);
+
         let last_key = self.last_key.map(|x| x as u32).unwrap_or(u32::MAX) as u32;
         fifo.write_blocking(last_key);
     }
@@ -209,6 +215,7 @@ impl InterCoreMessage {
     pub fn receive(fifo: &mut SioFifo) -> Result<Self, ()> {
         let jog_axis: JogAxis = fifo.read_blocking().try_into()?;
         let jog_action: LastJog = fifo.read_blocking().try_into()?;
+        let jog_scale = fifo.read_blocking().clamp(0, 3) as u8;
         let raw = fifo.read_blocking();
         let last_key = match raw {
             0..=11 => Some(raw as u8),
@@ -219,6 +226,7 @@ impl InterCoreMessage {
             jog_axis,
             last_key,
             jog_action,
+            jog_scale,
         })
     }
 }
