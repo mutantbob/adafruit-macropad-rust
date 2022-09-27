@@ -34,7 +34,7 @@ impl TryFrom<u32> for JogAxis {
 }
 
 #[derive(Debug, Copy, Clone)]
-#[allow(upper_case_acronyms)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum LastJog {
     None,
     CW,
@@ -136,14 +136,7 @@ where
                 .next()
         });
 
-        match self.last_key {
-            Some(idx) => {
-                self.last_key = recently_pressed;
-            }
-            None => {
-                self.last_key = recently_pressed;
-            }
-        }
+        self.last_key = recently_pressed;
 
         match self.last_key {
             Some(9) => self.jog_axis = JogAxis::X,

@@ -4,7 +4,6 @@
 #![no_std]
 #![no_main]
 
-use core::char::from_digit;
 use core::str::from_utf8_unchecked;
 // Provide an alias for our BSP so we can switch targets quickly.
 // Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
@@ -12,6 +11,9 @@ use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
 use crate::core1::{InterCoreMessage, JogAxis, LastJog};
+use crate::keybindings::{
+    key_x_minus, key_x_plus, key_y_minus, key_y_plus, key_z_minus, key_z_plus,
+};
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
 use adafruit_macropad::hal::multicore::{Multicore, Stack};
 use adafruit_macropad::hal::pio::SM0;
@@ -41,21 +43,10 @@ use usbd_hid::hid_class::HIDClass;
 use ws2812_pio::Ws2812;
 
 mod core1;
+mod keybindings;
 mod painter;
 
 static mut CORE1_STACK: Stack<4096> = Stack::new();
-
-const LEFT_CTRL: u8 = 1;
-const LEFT_SHIFT: u8 = 2;
-const LEFT_ALT: u8 = 4;
-const LEFT_META: u8 = 8;
-
-const KP_PAGE_UP: u8 = 0x4b;
-const KP_PAGE_DOWN: u8 = 0x4e;
-const KP_RIGHT_ARROW: u8 = 0x4f;
-const KP_LEFT_ARROW: u8 = 0x50;
-const KP_DOWN_ARROW: u8 = 0x51;
-const KP_UP_ARROW: u8 = 0x52;
 
 #[entry]
 fn main() -> ! {
@@ -169,7 +160,6 @@ impl<'a> UsbGenerator<'a> {
         jog_axis: JogAxis,
         jog_action: LastJog,
         key_pressed: Option<u8>,
-        jog_scale: &mut u8,
     ) {
         self.debug_msg.reset();
 
@@ -187,36 +177,16 @@ impl<'a> UsbGenerator<'a> {
     }
 
     pub fn simple_keyboard_action(key_pressed: Option<u8>) -> KeyboardReport {
-        let kr: KeyboardReport = if false {
-            match key_pressed {
-                Some(1) => simple_kr1(LEFT_SHIFT, b'x' - b'a' + 4),
-                Some(3) => simple_kr1(0, b'y' - b'a' + 4),
-                Some(5) => simple_kr1(LEFT_SHIFT, b'y' - b'a' + 4),
-                Some(7) => simple_kr1(0, b'x' - b'a' + 4),
-                Some(2) => simple_kr1(LEFT_SHIFT, b'z' - b'a' + 4),
-                Some(8) => simple_kr1(0, b'z' - b'a' + 4),
-
-                _ => simple_kr1(0, 0),
-            }
-        } else {
-            match key_pressed {
-                Some(1) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_UP_ARROW),
-                Some(3) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_LEFT_ARROW),
-                Some(5) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_RIGHT_ARROW),
-                Some(7) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_DOWN_ARROW),
-                Some(2) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_PAGE_UP),
-                Some(8) => simple_kr1(LEFT_CTRL | LEFT_ALT, KP_PAGE_DOWN),
-                _ => simple_kr1(0, 0),
-            }
+        let kr: KeyboardReport = match key_pressed {
+            Some(1) => key_y_plus(),
+            Some(3) => key_x_minus(),
+            Some(5) => key_x_plus(),
+            Some(7) => key_y_minus(),
+            Some(2) => key_z_plus(),
+            Some(8) => key_z_minus(),
+            _ => keybindings::simple_kr1(0, 0),
         };
         kr
-    }
-}
-
-fn number_keycode(digit: u8) -> u8 {
-    match digit {
-        0 => 0x27,
-        _ => 0x1d + digit,
     }
 }
 
@@ -309,18 +279,14 @@ where
             .write(lights_for(self.jog_axis, self.last_key));
 
         if jog_scale != self.jog_scale {
-            let kr = simple_kr1(LEFT_CTRL | LEFT_ALT, number_keycode(1 + jog_scale));
+            let kr = keybindings::key_jog_scale(jog_scale);
             if self.generator.send_keyboard_report(&kr) {
                 self.jog_scale = jog_scale;
                 self.jog_scale_down = true;
             }
         } else {
-            self.generator.generate_usb_events(
-                self.jog_axis,
-                jog_action,
-                self.last_key,
-                &mut self.jog_scale,
-            );
+            self.generator
+                .generate_usb_events(self.jog_axis, jog_action, self.last_key);
         }
 
         if false {
@@ -450,16 +416,3 @@ impl<const N: usize> uWrite for UfmtWrapper<N> {
 }
 
 //
-
-pub fn simple_kr(modifier: u8, keycodes: [u8; 6]) -> KeyboardReport {
-    KeyboardReport {
-        modifier,
-        reserved: 0,
-        leds: 0,
-        keycodes,
-    }
-}
-
-pub fn simple_kr1(modifier: u8, key_code_1: u8) -> KeyboardReport {
-    simple_kr(modifier, [key_code_1, 0, 0, 0, 0, 0])
-}
