@@ -10,6 +10,7 @@ use core::str::from_utf8_unchecked;
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
+use crate::mission_modes::HoldKey;
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
 use adafruit_macropad::hal::multicore::{Multicore, Stack};
 use adafruit_macropad::hal::pio::SM0;
@@ -140,9 +141,12 @@ struct MissionModes {
     icarus_jog_70: IcarusJog,
     icarus_jog_0: IcarusJog,
     mouse1: MouseHold,
+    hold_f: HoldKey,
 }
 
 impl MissionModes {
+    /// super important:
+    /// mapping from keypad indices to macros (missions)
     pub(crate) fn mission_for(&mut self, idx: u8) -> Option<&mut dyn MissionMode<KeyboardOrMouse>> {
         match idx {
             0 => Some(&mut self.icarus_jog_100),
@@ -151,6 +155,7 @@ impl MissionModes {
             9 => Some(&mut self.icarus_jog_0),
 
             1 => Some(&mut self.mouse1),
+            4 => Some(&mut self.hold_f),
 
             _ => None,
         }
@@ -165,6 +170,7 @@ impl MissionModes {
             icarus_jog_70: IcarusJog::new(0.6),
             icarus_jog_0: IcarusJog::new(0.0),
             mouse1: MouseHold::new(),
+            hold_f: unsafe { HoldKey::lower_case_letter('f') },
         }
     }
 }

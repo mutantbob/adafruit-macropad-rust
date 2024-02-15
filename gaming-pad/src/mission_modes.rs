@@ -122,3 +122,40 @@ impl MissionMode<KeyboardOrMouse> for MouseHold {
         }
     }
 }
+
+//
+
+pub struct HoldKey {
+    deactivated: bool,
+    /// not the character, the key code.
+    usb_key_code: u8,
+}
+
+impl HoldKey {
+    /// # Safety
+    /// `lower_case_letter` must be in the range 'a'-'z' or this will not do what you expect.
+    pub unsafe fn lower_case_letter(lower_case_letter: char) -> Self {
+        Self {
+            deactivated: false,
+            usb_key_code: lower_case_letter as u8 - b'a' + 4,
+        }
+    }
+}
+
+impl MissionMode<KeyboardOrMouse> for HoldKey {
+    fn reboot(&mut self) {}
+
+    fn one_usb_pass(&mut self, _millis_elapsed: u32) -> KeyboardOrMouse {
+        let keyboard_report = simple_kr1(0, self.usb_key_code);
+        KeyboardOrMouse::Keyboard(keyboard_report)
+    }
+
+    fn maybe_deactivate(&mut self) -> Option<KeyboardOrMouse> {
+        if self.deactivated {
+            None
+        } else {
+            self.deactivated = true;
+            Some(KeyboardOrMouse::Keyboard(simple_kr1(0, 0)))
+        }
+    }
+}
