@@ -16,18 +16,18 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 adafruit-macropad = "*"
 ws2812-pio = "0.3.0"
-smart-leds-trait = "*"
-embedded-graphics-core = "*"
+smart-leds-trait = "0.2.1"
+embedded-graphics-core = "0.3.3"
 embedded-graphics = "0.7.1"
-sh1106="*"
+sh1106="0.4.0"
 bitmap-font="*"
 embedded-vintage-fonts = "*"
 
 
 rotary-encoder-hal = "*"
 ufmt="*"
-usbd-hid="*"
-usb-device="*"
+usbd-hid="0.5.2"
+usb-device="0.2.9"
 
 # We're using a Pico by default on this template
 rp-pico = "0.4"

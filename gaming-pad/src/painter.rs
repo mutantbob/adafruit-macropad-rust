@@ -3,11 +3,11 @@ use bitmap_font::tamzen::FONT_8x15;
 use bitmap_font::TextStyle;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Size};
+use embedded_graphics::prelude::{DrawTarget, Point, Size};
 use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::text::renderer::TextRenderer;
 use embedded_graphics::text::Text;
-use embedded_graphics_core::Drawable;
+use embedded_graphics::Drawable;
 use embedded_vintage_fonts::FONT_6X8;
 use ufmt::uwrite;
 
@@ -19,7 +19,7 @@ pub fn easy_text_at<C, D, E, S>(
     style: S,
 ) -> Result<Point, E>
 where
-    D: embedded_graphics_core::prelude::DrawTarget<Color = C, Error = E>,
+    D: DrawTarget<Color = C, Error = E>,
     S: TextRenderer<Color = C>,
 {
     Text::new(msg, embedded_graphics::geometry::Point::new(x, y), style).draw(
@@ -134,7 +134,7 @@ where
                 let x = (128 + 1) * col / 3 + 21 - label.len() * 3;
                 let y = 10 * row + 25;
                 easy_text_at(
-                    *label,
+                    label,
                     x as i32,
                     y as i32,
                     &mut self.disp,

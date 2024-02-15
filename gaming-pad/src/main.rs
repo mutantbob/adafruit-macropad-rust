@@ -12,7 +12,7 @@ use rp_pico as bsp;
 
 use adafruit_macropad::hal::gpio::{Function, Pin, PinId, PushPullOutput, ValidPinMode};
 use adafruit_macropad::hal::multicore::{Multicore, Stack};
-use adafruit_macropad::hal::pio::{PIOExt, SM0};
+use adafruit_macropad::hal::pio::SM0;
 use adafruit_macropad::hal::sio::SioFifo;
 use adafruit_macropad::hal::timer::CountDown;
 use adafruit_macropad::hal::usb::UsbBus;
